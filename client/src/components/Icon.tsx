@@ -22,6 +22,7 @@ const PATHS: Record<string, string> = {
   comment: 'M2 3h12v8H6l-3 2.5V11H2z',
   save: 'M2.5 2.5h9l2 2v9h-11zM5 2.5v3.5h5V2.5M5 13.5v-4h6v4',
   drag: 'M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01',
+  lock: 'M3.5 7h9v7h-9zM5.5 7V5a2.5 2.5 0 0 1 5 0v2M8 10v1.5',
   calendar: 'M2.5 3.5h11v10h-11zM2.5 6.5h11M5.5 2v3M10.5 2v3',
   people: 'M6 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM1.5 13.5c.5-2.5 2.3-4 4.5-4s4 1.5 4.5 4M11 7a2 2 0 1 0 0-4M12 9.5c1.3.5 2.2 1.8 2.5 3.5',
   chart: 'M2 14h12M4 12V8M7 12V4M10 12V6M13 12V9',

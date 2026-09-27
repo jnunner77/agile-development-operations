@@ -31,6 +31,7 @@ Start empty instead with `SEED=empty npm start`, or use **Project settings → S
 | `PORT` | `4000` | HTTP port |
 | `DATA_DIR` | `./data` | Where the database and snapshots are stored |
 | `SEED` | `demo` | `demo` or `empty` — data created when no database exists yet |
+| `AUTH_DISABLED` | _(unset)_ | Set to `1` to force sign-in off (recovery if every administrator is locked out) |
 
 ## Features
 
@@ -73,6 +74,33 @@ Start empty instead with `SEED=empty npm start`, or use **Project settings → S
 - **Work details** panel: remaining work vs. remaining capacity for the team, per activity and per person.
 - **Analytics**: sprint burndown (reconstructed from history, with ideal trend and available capacity)
   and velocity across sprints.
+
+### Sign-in (optional)
+Off by default, so the app works as before with a "who am I" picker. To turn it on:
+
+1. In **Project settings → Team members**, give each person a **username**.
+2. In **Project settings → Authentication**, tick **Administrator** for at least one of them,
+   then tick **Require people to sign in** and save.
+3. Everyone signs in with their username. The first time, they leave the password blank and
+   choose one. Until they do, anyone who types that username can set it, so tell people promptly
+   (or have an administrator set a temporary password for them).
+
+- **Passwords** are stored as salted scrypt hashes in `DATA_DIR/auth.json`, never in plain text and
+  never sent to browsers, snapshots or backup exports. They must be at least 8 characters.
+- **Expiry**: passwords expire after 60 days by default (configurable, or off). An expired password
+  still works once, to choose a new one.
+- **Session timeout**: people are signed out after 60 minutes of inactivity by default
+  (configurable, 5 minutes to 7 days). Restarting the server signs everyone out.
+- **Lockout**: 5 wrong passwords lock that username for 5 minutes.
+- **Administrators** can change these settings, set a temporary or permanent password for anyone,
+  reset a password (the person chooses a new one at next sign-in), make others administrators,
+  and are the only ones who can change team members, project settings, restore snapshots, import
+  backups or reset data. The app never lets you remove the last administrator who can sign in.
+- **Locked out?** Start the server with `AUTH_DISABLED=1`, fix the accounts in Project settings,
+  then restart without it.
+
+Use HTTPS (for example behind a reverse proxy) if the app is reachable beyond your own machine;
+otherwise passwords travel over the network unencrypted.
 
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,

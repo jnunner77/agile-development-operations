@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { connectEvents, loadAll } from './api';
-import { ConfirmHost, Toasts } from './components/common';
+import { signOut, startApp } from './api';
+import { ConfirmHost, Toasts, useMenu } from './components/common';
+import { ChangePasswordDialog, SignInScreen } from './components/SignIn';
 import { Icon } from './components/Icon';
 import { WorkItemDialogHost, useWorkItemDialog } from './components/WorkItemForm';
 import { BacklogPage } from './pages/BacklogPage';
@@ -22,12 +23,11 @@ const NAV = [
 export function App() {
   const loaded = useStore((s) => s.loaded);
   const loadError = useStore((s) => s.loadError);
+  const signInRequired = useStore((s) => s.signInRequired);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    loadAll()
-      .then(connectEvents)
-      .catch((err) => useStore.setState({ loadError: err instanceof Error ? err.message : String(err) }));
+    startApp().catch((err) => useStore.setState({ loadError: err instanceof Error ? err.message : String(err) }));
   }, []);
 
   if (loadError) {
@@ -40,6 +40,14 @@ export function App() {
           Retry
         </button>
       </div>
+    );
+  }
+  if (signInRequired) {
+    return (
+      <>
+        <SignInScreen />
+        <Toasts />
+      </>
     );
   }
   if (!loaded) return <div className="boot muted">Loading…</div>;
@@ -111,6 +119,7 @@ function TopBar() {
   const members = useStore((s) => s.members);
   const currentUserId = useStore((s) => s.currentUserId);
   const connection = useStore((s) => s.connection);
+  const signedIn = useStore((s) => !!s.auth?.enabled && !!s.auth.user);
   const items = useStore((s) => s.workItems);
   const { open } = useWorkItemDialog();
   const navigate = useNavigate();
@@ -154,19 +163,61 @@ function TopBar() {
         <span className="connection-dot" />
         {connection === 'offline' && 'Offline'}
       </span>
-      <label className="user-switch" title="Acting as (recorded in history and comments)">
-        <Avatar member={me} size={26} />
-        <select value={currentUserId ?? ''} onChange={(e) => setCurrentUser(e.target.value)} aria-label="Current user">
-          {!me && <option value="">Choose user…</option>}
-          {members
-            .filter((m) => m.active)
-            .map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-        </select>
-      </label>
+      {signedIn ? (
+        <SignedInUser />
+      ) : (
+        <label className="user-switch" title="Acting as (recorded in history and comments)">
+          <Avatar member={me} size={26} />
+          <select value={currentUserId ?? ''} onChange={(e) => setCurrentUser(e.target.value)} aria-label="Current user">
+            {!me && <option value="">Choose user…</option>}
+            {members
+              .filter((m) => m.active)
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
     </header>
+  );
+}
+
+/** With sign-in on, the top-right shows who you are, with password and sign-out options. */
+function SignedInUser() {
+  const user = useStore((s) => s.auth?.user);
+  const me = useStore((s) => s.members.find((m) => m.id === s.auth?.user?.memberId));
+  const menu = useMenu();
+  const [changing, setChanging] = useState(false);
+  if (!user) return null;
+  const daysLeft = user.passwordExpiresAt ? Math.ceil((Date.parse(user.passwordExpiresAt) - Date.now()) / 86_400_000) : null;
+  return (
+    <>
+      <button
+        className="user-switch user-menu-btn"
+        title={`Signed in as ${user.username}`}
+        onClick={(e) =>
+          menu.openAt(e, [
+            { label: `Signed in as ${user.username}`, icon: 'person', disabled: true },
+            ...(daysLeft != null ? [{ label: `Password expires in ${Math.max(daysLeft, 0)} day${daysLeft === 1 ? '' : 's'}`, disabled: true }] : []),
+            { divider: true },
+            { label: 'Change password…', icon: 'edit', onClick: () => setChanging(true) },
+            { label: 'Sign out', icon: 'open', onClick: () => void signOut() },
+          ])
+        }
+      >
+        <Avatar member={me} size={26} />
+        <span className="user-menu-name">{user.name}</span>
+        {daysLeft != null && daysLeft <= 7 && (
+          <span className="badge badge-danger" title="Your password expires soon">
+            {Math.max(daysLeft, 0)}d
+          </span>
+        )}
+        <Icon name="chevronDown" size={12} />
+      </button>
+      {menu.element}
+      {changing && <ChangePasswordDialog onClose={() => setChanging(false)} />}
+    </>
   );
 }

@@ -2406,3 +2406,96 @@ tr.selected .row-more {
 .grid .tags {
   flex-wrap: nowrap;
 }
+
+/* ---------- Sign-in & authentication -------------------------------------- */
+.signin {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--bg);
+}
+.signin-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 24px;
+}
+.signin-card h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.signin-card p {
+  margin: 0;
+}
+.signin-card .btn-primary {
+  justify-content: center;
+}
+.signin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.form-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.callout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.callout-warn {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.text-danger {
+  color: var(--danger);
+}
+.text-warn {
+  color: var(--warn);
+}
+.form .inline-field {
+  align-items: center;
+  font-size: 13px;
+}
+.num-input {
+  width: 90px;
+}
+.field-hint {
+  font-weight: 400;
+}
+.user-menu-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  color: inherit;
+}
+.user-menu-btn:hover {
+  background: var(--hover);
+}
+.user-menu-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

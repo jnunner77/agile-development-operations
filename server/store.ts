@@ -80,6 +80,7 @@ export class Store {
   db: Database;
   private readonly file: string;
   private readonly listeners = new Set<DeltaListener>();
+  private readonly guards: ((db: Database) => void)[] = [];
 
   constructor(
     readonly dataDir: string,
@@ -102,6 +103,16 @@ export class Store {
     fs.renameSync(tmp, this.file);
   }
 
+  /** Register a check that throws if a database state must not be committed. */
+  addGuard(guard: (db: Database) => void) {
+    this.guards.push(guard);
+  }
+
+  /** Throw if committing `db` would break an invariant (e.g. lock every administrator out). */
+  check(db: Database) {
+    for (const guard of this.guards) guard(db);
+  }
+
   subscribe(listener: DeltaListener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -119,6 +130,7 @@ export class Store {
     const working = structuredClone(this.db);
     const tx = new Tx(working, user);
     const result = fn(tx);
+    if (tx.members.size || tx.deletedMembers.size) this.check(working);
     working.version = this.db.version + 1;
     this.db = working;
     this.save();
@@ -130,6 +142,7 @@ export class Store {
   /** Replace the entire database (restore / import / reset). */
   replace(db: Database, origin?: string): Delta {
     const next = normalizeDatabase(db);
+    this.check(next);
     next.version = this.db.version + 1;
     this.db = next;
     this.save();

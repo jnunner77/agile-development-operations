@@ -9,11 +9,14 @@ import { emptyDatabase } from './schema';
 import { buildDemoDatabase } from './seed';
 import * as wi from './workitems';
 import * as team from './team';
+import { AuthManager } from './auth';
 
 export interface AppOptions {
   store: Store;
   snapshots: SnapshotManager;
   staticDir?: string;
+  /** Sign-in handling; one is created (sign-in off until turned on in settings) if omitted. */
+  auth?: AuthManager;
 }
 
 /** Resolve the display name of the caller from the X-User header (a member id or a name). */
@@ -30,12 +33,17 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-export function createApp({ store, snapshots, staticDir }: AppOptions) {
+export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store) }: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100mb' }));
 
   const api = express.Router();
+  const admin = auth.requireAdmin;
+
+  // Must come first: with sign-in on, everything below needs a valid session.
+  api.use(auth.authenticate);
+  api.use('/auth', auth.routes());
 
   /** Wrap a mutation: run it in a transaction and reply with the resulting delta. */
   const mutate =
@@ -58,10 +66,19 @@ export function createApp({ store, snapshots, staticDir }: AppOptions) {
       'X-Accel-Buffering': 'no',
     });
     res.write(`event: hello\ndata: ${JSON.stringify({ version: store.db.version })}\n\n`);
+    // Stop streaming once the session times out, the user is signed out, or sign-in is turned on.
+    const token = res.locals.authToken as string | undefined;
+    const allowed = () => !auth.enabled || (!!token && !!auth.resolve(token, false));
+    const stop = () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      res.end();
+    };
     const unsubscribe = store.subscribe((delta, origin) => {
+      if (!allowed()) return stop();
       res.write(`data: ${JSON.stringify({ delta, origin })}\n\n`);
     });
-    const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
+    const heartbeat = setInterval(() => (allowed() ? res.write(': ping\n\n') : stop()), 25_000);
     req.on('close', () => {
       clearInterval(heartbeat);
       unsubscribe();
@@ -170,18 +187,22 @@ export function createApp({ store, snapshots, staticDir }: AppOptions) {
   // ---- Team & settings --------------------------------------------------------
   api.post(
     '/members',
+    admin,
     mutate((tx, req) => team.createMember(tx, team.memberSchema.parse(req.body)), 201),
   );
   api.patch(
     '/members/:id',
+    admin,
     mutate((tx, req) => team.updateMember(tx, String(req.params.id), team.memberSchema.parse(req.body))),
   );
   api.delete(
     '/members/:id',
+    admin,
     mutate((tx, req) => team.deleteMember(tx, String(req.params.id))),
   );
   api.patch(
     '/settings',
+    admin,
     mutate((tx, req) => team.updateSettings(tx, team.settingsSchema.parse(req.body))),
   );
 
@@ -195,14 +216,14 @@ export function createApp({ store, snapshots, staticDir }: AppOptions) {
     const input = snapshotInput.parse(req.body ?? {});
     res.status(201).json(snapshots.create(input.name ?? '', input.description ?? '', 'manual', userName(store, req)));
   });
-  api.patch('/snapshots/:id', (req, res) => {
+  api.patch('/snapshots/:id', admin, (req, res) => {
     res.json(snapshots.update(String(req.params.id), snapshotInput.parse(req.body)));
   });
-  api.delete('/snapshots/:id', (req, res) => {
+  api.delete('/snapshots/:id', admin, (req, res) => {
     snapshots.delete(String(req.params.id));
     res.status(204).end();
   });
-  api.post('/snapshots/:id/restore', (req, res) => {
+  api.post('/snapshots/:id/restore', admin, (req, res) => {
     const safety = snapshots.restore(String(req.params.id), userName(store, req), req.header('x-client-id'));
     res.json({ safetySnapshot: safety });
   });
@@ -222,7 +243,7 @@ export function createApp({ store, snapshots, staticDir }: AppOptions) {
       data: store.db,
     });
   });
-  api.post('/backup/import', (req, res) => {
+  api.post('/backup/import', admin, (req, res) => {
     try {
       const safety = snapshots.import(req.body, userName(store, req), req.header('x-client-id'));
       res.json({ safetySnapshot: safety });
@@ -231,11 +252,12 @@ export function createApp({ store, snapshots, staticDir }: AppOptions) {
       throw badRequest(err instanceof Error ? err.message : 'Invalid backup file');
     }
   });
-  api.post('/backup/reset', (req, res) => {
+  api.post('/backup/reset', admin, (req, res) => {
     const { mode } = z.object({ mode: z.enum(['empty', 'demo']) }).parse(req.body);
-    const safety = snapshots.create('Before reset', `Automatic safety snapshot taken before resetting to ${mode === 'demo' ? 'demo data' : 'an empty project'}`, 'pre-reset', userName(store, req));
     const settings = { ...store.db.settings };
     const next = mode === 'demo' ? buildDemoDatabase() : emptyDatabase({ projectName: settings.projectName, teamName: settings.teamName, backup: settings.backup, workingDays: settings.workingDays, areaPaths: settings.areaPaths });
+    store.check(next);
+    const safety = snapshots.create('Before reset', `Automatic safety snapshot taken before resetting to ${mode === 'demo' ? 'demo data' : 'an empty project'}`, 'pre-reset', userName(store, req));
     store.replace(next, req.header('x-client-id'));
     res.json({ safetySnapshot: safety });
   });

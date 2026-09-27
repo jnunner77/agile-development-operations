@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Database, Delta, Member, RecycledItem, Sprint, SprintCapacity, WorkItem, WorkItemLink } from '../../shared/types';
+import type { AuthStatus } from '../../shared/auth';
 
 const USER_KEY = 'boards.currentUser';
 
@@ -25,6 +26,10 @@ interface State {
   recycleBin: RecycledItem[];
   currentUserId: string | null;
   toasts: Toast[];
+  /** Sign-in status from the server; null until the app has started. */
+  auth: AuthStatus | null;
+  /** Show the sign-in screen instead of the app. */
+  signInRequired: boolean;
 }
 
 /**
@@ -55,12 +60,16 @@ export const useStore = create<State>(() => ({
   recycleBin: [],
   currentUserId: readUser(),
   toasts: [],
+  auth: null,
+  signInRequired: false,
 }));
 
 export function setDatabase(db: Database) {
   entityVersions.clear();
   const s = useStore.getState();
   const userValid = s.currentUserId && db.members.some((m) => m.id === s.currentUserId);
+  // With sign-in on, you always act as yourself.
+  const signedIn = s.auth?.enabled ? s.auth.user?.memberId : undefined;
   useStore.setState({
     loaded: true,
     loadError: null,
@@ -72,7 +81,7 @@ export function setDatabase(db: Database) {
     workItems: db.workItems,
     links: db.links,
     recycleBin: db.recycleBin ?? [],
-    currentUserId: userValid ? s.currentUserId : (db.members.find((m) => m.active)?.id ?? null),
+    currentUserId: signedIn ?? (userValid ? s.currentUserId : (db.members.find((m) => m.active)?.id ?? null)),
   });
 }
 

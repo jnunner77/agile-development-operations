@@ -13,6 +13,7 @@ import type {
   Hyperlink,
 } from '../../shared/types';
 import type { LinkType, WorkItemType } from '../../shared/process';
+import type { AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 
 const clientId = crypto.randomUUID();
@@ -21,12 +22,23 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+/** True for the error the server returns when sign-in is on and the session is missing or has ended. */
+export const isSignInError = (err: unknown) => err instanceof ApiError && err.status === 401 && err.code === 'signin';
+
+/** The session ended (timed out, signed out elsewhere, or sign-in was turned on): show the sign-in screen. */
+export function requireSignIn() {
+  source?.close();
+  source = null;
+  useStore.setState({ signInRequired: true, connection: 'connecting' });
+}
+
+export async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'X-Client-Id': clientId };
   const user = useStore.getState().currentUserId;
   if (user) headers['X-User'] = encodeURIComponent(user);
@@ -35,7 +47,11 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   const data = text ? JSON.parse(text) : undefined;
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    const err = new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, data?.code);
+    if (isSignInError(err)) requireSignIn();
+    throw err;
+  }
   return data as T;
 }
 
@@ -46,7 +62,7 @@ async function mutate<T = unknown>(method: string, url: string, body?: unknown, 
     if (applyDelta(delta)) await loadAll();
     return result;
   } catch (err) {
-    if (!opts.quiet) toast(err instanceof Error ? err.message : 'Something went wrong', 'error');
+    if (!opts.quiet && !isSignInError(err)) toast(err instanceof Error ? err.message : 'Something went wrong', 'error');
     throw err;
   }
 }
@@ -71,7 +87,25 @@ export function connectEvents() {
     const { delta } = JSON.parse(e.data) as { delta: Delta; origin?: string };
     if (applyDelta(delta)) void loadAll();
   };
-  source.onerror = () => useStore.setState({ connection: 'offline' });
+  source.onerror = () => {
+    useStore.setState({ connection: 'offline' });
+    void checkSession();
+  };
+}
+
+// The live-updates stream drops when a session ends. Ask the server (at most every 10s)
+// whether we're still signed in, rather than letting the browser retry forever.
+let lastCheck = 0;
+async function checkSession() {
+  if (Date.now() - lastCheck < 10_000) return;
+  lastCheck = Date.now();
+  try {
+    const status = await request<AuthStatus>('GET', '/auth/status');
+    useStore.setState({ auth: status });
+    if (status.enabled && !status.user) requireSignIn();
+  } catch {
+    // Server unreachable: stay "offline" and let EventSource keep retrying.
+  }
 }
 
 export type WorkItemFields = Partial<Omit<WorkItem, 'id' | 'type' | 'comments' | 'history' | 'hyperlinks' | 'createdAt' | 'createdBy' | 'changedAt' | 'changedBy' | 'closedAt' | 'stackRank' | 'reason'>>;
@@ -138,3 +172,35 @@ export const api = {
     return r;
   },
 };
+
+/** Sign-in endpoints. Errors are returned to the caller rather than shown as toasts. */
+export const authApi = {
+  status: () => request<AuthStatus>('GET', '/auth/status'),
+  login: (username: string, password: string) => request<LoginResult>('POST', '/auth/login', { username, password }),
+  /** First-time setup (no currentPassword), expired/temporary passwords, or a voluntary change. */
+  setPassword: (input: { username: string; currentPassword?: string; newPassword: string }) => request<LoginResult>('POST', '/auth/password', input),
+  logout: () => request<void>('POST', '/auth/logout'),
+  admin: () => request<AuthAdminView>('GET', '/auth/admin'),
+  updateSettings: (patch: Partial<AuthSettings>) => request<AuthAdminView>('PUT', '/auth/settings', patch),
+  setAdmin: (memberId: string, isAdmin: boolean) => request<AuthAdminView>('PATCH', `/auth/accounts/${memberId}`, { isAdmin }),
+  setPasswordFor: (memberId: string, password: string, mustChange: boolean) => request<AuthAdminView>('POST', `/auth/accounts/${memberId}/password`, { password, mustChange }),
+  resetPassword: (memberId: string) => request<AuthAdminView>('POST', `/auth/accounts/${memberId}/reset`),
+};
+
+/** Start the app: find out whether sign-in is needed, then load data and connect live updates. */
+export async function startApp() {
+  const status = await authApi.status();
+  useStore.setState({ auth: status, signInRequired: status.enabled && !status.user });
+  if (status.enabled && !status.user) return;
+  await loadAll();
+  connectEvents();
+}
+
+export async function signOut() {
+  try {
+    await authApi.logout();
+  } finally {
+    useStore.setState((s) => ({ auth: s.auth ? { ...s.auth, user: null } : s.auth }));
+    requireSignIn();
+  }
+}

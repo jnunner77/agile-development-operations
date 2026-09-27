@@ -7,6 +7,7 @@ import { api } from '../api';
 import { Avatar, EmptyState, Modal, StateBadge, confirmDialog } from '../components/common';
 import { Icon, TypeIcon } from '../components/Icon';
 import { SprintDialog } from '../components/SprintDialog';
+import { SecuritySettings } from './SecuritySettings';
 import { formatBytes, formatDateTime, timeAgo } from '../lib/format';
 import { useSortedSprints, useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';
@@ -17,11 +18,19 @@ const TABS = [
   { key: 'sprints', label: 'Sprints', icon: 'sprint' },
   { key: 'backups', label: 'Snapshots & backups', icon: 'backup' },
   { key: 'recycle-bin', label: 'Recycle bin', icon: 'trash' },
+  { key: 'authentication', label: 'Authentication', icon: 'lock', adminOnly: true },
 ];
+
+/** With sign-in on, only administrators can change project settings. */
+export function useCanAdminister() {
+  return useStore((s) => !s.auth?.enabled || !!s.auth.user?.isAdmin);
+}
 
 export function SettingsPage() {
   const { tab } = useParams();
-  if (!TABS.some((t) => t.key === tab)) return <Navigate to="/settings/general" replace />;
+  const canAdminister = useCanAdminister();
+  const tabs = TABS.filter((t) => !t.adminOnly || canAdminister);
+  if (!tabs.some((t) => t.key === tab)) return <Navigate to="/settings/general" replace />;
   return (
     <div className="page">
       <div className="page-header">
@@ -33,18 +42,24 @@ export function SettingsPage() {
       </div>
       <div className="page-body settings">
         <nav className="settings-nav">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <Link key={t.key} to={`/settings/${t.key}`} className={t.key === tab ? 'active' : ''}>
               <Icon name={t.icon} size={16} /> {t.label}
             </Link>
           ))}
         </nav>
         <div className="settings-content">
+          {!canAdminister && (
+            <div className="callout">
+              <Icon name="lock" size={14} /> Only administrators can change project settings.
+            </div>
+          )}
           {tab === 'general' && <GeneralSettings />}
           {tab === 'team' && <TeamSettings />}
           {tab === 'sprints' && <SprintSettings />}
           {tab === 'backups' && <BackupSettings />}
           {tab === 'recycle-bin' && <RecycleBin />}
+          {tab === 'authentication' && <SecuritySettings />}
         </div>
       </div>
     </div>
@@ -119,11 +134,12 @@ function TeamSettings() {
   const members = useStore((s) => s.members);
   const items = useStore((s) => s.workItems);
   const [editing, setEditing] = useState<Member | 'new' | null>(null);
+  const canAdminister = useCanAdminister();
   return (
     <div className="settings-card">
       <div className="row between">
         <h2>Team members</h2>
-        <button className="btn btn-primary" onClick={() => setEditing('new')}>
+        <button className="btn btn-primary" onClick={() => setEditing('new')} disabled={!canAdminister}>
           <Icon name="add" size={12} /> Add member
         </button>
       </div>
@@ -155,12 +171,13 @@ function TeamSettings() {
                 <td>{m.active ? 'Active' : <span className="muted">Inactive</span>}</td>
                 <td className="num">{items.filter((w) => w.assignedTo === m.id && w.state !== 'Done' && w.state !== 'Removed').length}</td>
                 <td className="col-actions">
-                  <button className="icon-btn" aria-label={`Edit ${m.name}`} onClick={() => setEditing(m)}>
+                  <button className="icon-btn" aria-label={`Edit ${m.name}`} onClick={() => setEditing(m)} disabled={!canAdminister}>
                     <Icon name="edit" size={14} />
                   </button>
                   <button
                     className="icon-btn"
                     aria-label={`Remove ${m.name}`}
+                    disabled={!canAdminister}
                     onClick={async () => {
                       const ok = await confirmDialog({
                         title: `Remove ${m.name}?`,
@@ -216,6 +233,7 @@ function MemberDialog({ member, onClose }: { member?: Member; onClose: () => voi
             autoComplete="off"
             spellCheck={false}
           />
+          <span className="muted small field-hint">Used to sign in when sign-in is turned on.</span>
         </label>
         <label>
           Email
