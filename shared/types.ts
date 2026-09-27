@@ -76,6 +76,32 @@ export interface Hyperlink {
   addedAt: Timestamp;
 }
 
+export type DevLinkKind = 'branch' | 'commit' | 'pullRequest';
+
+/** A branch, commit or pull request in a source repository that references a work item. */
+export interface DevLink {
+  /** Stable key: kind + repository + ref, so repeated events update the same link. */
+  id: string;
+  kind: DevLinkKind;
+  /** owner/name */
+  repo: string;
+  /** Branch name, commit SHA, or pull request number. */
+  ref: string;
+  title: string;
+  url: string;
+  /** Pull requests: open / merged / closed; branches: open / deleted. */
+  state: 'open' | 'merged' | 'closed' | 'deleted' | null;
+  draft?: boolean;
+  /** Latest CI result for a pull request's head commit. */
+  checks?: 'pending' | 'success' | 'failure' | null;
+  headSha?: string | null;
+  /** Pull requests: the branch they merge into. */
+  baseRef?: string | null;
+  author: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface WorkItem {
   id: number;
   type: WorkItemType;
@@ -119,6 +145,8 @@ export interface WorkItem {
 
   tags: string[];
   hyperlinks: Hyperlink[];
+  /** Linked branches, commits and pull requests (filled in by the GitHub integration). */
+  devLinks: DevLink[];
   comments: Comment[];
   history: HistoryEntry[];
 

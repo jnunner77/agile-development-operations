@@ -11,6 +11,7 @@ import * as wi from './workitems';
 import * as team from './team';
 import { AuthManager } from './auth';
 import { Security, retryAfterOf, securityHeaders } from './security';
+import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github';
 
 export interface AppOptions {
   store: Store;
@@ -25,6 +26,8 @@ export interface AppOptions {
   trustProxy?: boolean | number | string;
   /** Rate limits and abuse protection; pass false to turn them off (tests). */
   security?: Security | false;
+  /** Source control integration; one is created if omitted. */
+  github?: GitHubIntegration;
 }
 
 /** Largest JSON body accepted, except for importing a backup (admins only). */
@@ -45,7 +48,7 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy, security = new Security() }: AppOptions) {
+export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy, security = new Security(), github = new GitHubIntegration(store) }: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
   if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
@@ -54,7 +57,8 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
   // Small bodies everywhere; the backup import route parses its own larger body, but only
   // after the caller has been checked as an administrator.
   const smallJson = express.json({ limit: JSON_LIMIT });
-  app.use((req, res, next) => (req.path === '/api/backup/import' ? next() : smallJson(req, res, next)));
+  const ownBodyParser = new Set(['/api/backup/import', WEBHOOK_PATH]);
+  app.use((req, res, next) => (ownBodyParser.has(req.path) ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
   const admin = auth.requireAdmin;
@@ -82,6 +86,9 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     api.use(security.apiLimits(() => auth.enabled));
     api.use(['/auth/login', '/auth/password'], security.signIn);
   }
+  // GitHub webhooks authenticate with a signature over the body, not a session.
+  api.post('/integrations/github/webhook', GitHubIntegration.rawBody, github.webhook);
+
   // With sign-in on, everything below needs a valid session.
   api.use(auth.authenticate);
   api.use('/auth', auth.routes());
@@ -184,6 +191,24 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     '/workitems/:id/hyperlinks/:linkId',
     mutate((tx, req) => wi.removeHyperlink(tx, intParam(req.params.id), String(req.params.linkId))),
   );
+
+  api.delete(
+    '/workitems/:id/devlinks/:linkId',
+    mutate((tx, req) => github.removeLink(tx, intParam(req.params.id), String(req.params.linkId))),
+  );
+
+  // ---- Integrations (administrators) -----------------------------------------
+  api.get('/integrations/github', admin, (_req, res) => {
+    res.json(github.adminView());
+  });
+  api.put('/integrations/github', admin, (req, res) => {
+    github.updateSettings(githubSettingsSchema.parse(req.body));
+    res.json(github.adminView());
+  });
+  api.post('/integrations/github/secret', admin, (_req, res) => {
+    const secret = github.rotateSecret();
+    res.json({ secret, view: github.adminView() });
+  });
 
   api.post(
     '/links',

@@ -14,6 +14,7 @@ import type {
 } from '../../shared/types';
 import type { LinkType, WorkItemType } from '../../shared/process';
 import type { AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
+import type { GitHubAdminView, GitHubSettings } from '../../shared/integrations';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 
 const clientId = crypto.randomUUID();
@@ -137,6 +138,7 @@ export const api = {
   addLink: (sourceId: number, targetId: number, type: LinkType, comment = '') =>
     mutate<WorkItemLink>('POST', '/links', { sourceId, targetId, type, comment }),
   removeLink: (id: string) => mutate('DELETE', `/links/${id}`),
+  removeDevLink: (id: number, linkId: string) => mutate('DELETE', `/workitems/${id}/devlinks/${encodeURIComponent(linkId)}`),
   restoreDeleted: (id: number) => mutate<WorkItem>('POST', `/recycle-bin/${id}/restore`),
   purgeDeleted: (id: number) => mutate('DELETE', `/recycle-bin/${id}`),
 
@@ -204,3 +206,9 @@ export async function signOut() {
     requireSignIn();
   }
 }
+
+export const githubApi = {
+  get: () => request<GitHubAdminView>('GET', '/integrations/github'),
+  update: (patch: Partial<GitHubSettings>) => request<GitHubAdminView>('PUT', '/integrations/github', patch),
+  rotateSecret: () => request<{ secret: string; view: GitHubAdminView }>('POST', '/integrations/github/secret'),
+};

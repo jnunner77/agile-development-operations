@@ -8,6 +8,7 @@ import { Avatar, EmptyState, Modal, StateBadge, confirmDialog } from '../compone
 import { Icon, TypeIcon } from '../components/Icon';
 import { SprintDialog } from '../components/SprintDialog';
 import { SecuritySettings } from './SecuritySettings';
+import { IntegrationsSettings } from './IntegrationsSettings';
 import { formatBytes, formatDateTime, timeAgo } from '../lib/format';
 import { useSortedSprints, useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';
@@ -19,6 +20,7 @@ const TABS = [
   { key: 'backups', label: 'Snapshots & backups', icon: 'backup' },
   { key: 'recycle-bin', label: 'Recycle bin', icon: 'trash' },
   { key: 'authentication', label: 'Authentication', icon: 'lock', adminOnly: true },
+  { key: 'integrations', label: 'Integrations', icon: 'github', adminOnly: true },
 ];
 
 /** With sign-in on, only administrators can change project settings. */
@@ -60,6 +62,7 @@ export function SettingsPage() {
           {tab === 'backups' && <BackupSettings />}
           {tab === 'recycle-bin' && <RecycleBin />}
           {tab === 'authentication' && <SecuritySettings />}
+          {tab === 'integrations' && <IntegrationsSettings />}
         </div>
       </div>
     </div>

@@ -61,6 +61,7 @@ export function blankWorkItem(partial: Partial<WorkItem> & Pick<WorkItem, 'id' |
     integratedInBuild: '',
     tags: [],
     hyperlinks: [],
+    devLinks: [],
     comments: [],
     history: [],
     createdBy: 'System',

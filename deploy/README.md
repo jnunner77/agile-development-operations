@@ -122,6 +122,13 @@ administrator. Right after the first start:
 2. Turn sign-in on, sign in and choose your password.
 3. Add everyone else with a username (see *Sign-in* in the main README).
 
+## 6. Connect GitHub (optional)
+
+To link branches, commits and pull requests to work items, sign in as an administrator, open
+**Project settings → Integrations**, and follow the three steps there: create a secret, add
+the webhook in your GitHub repository (`https://yourteam.duckdns.org/api/integrations/github/webhook`,
+content type `application/json`), and check the *ping* arrives under *Recent deliveries*.
+
 ## Day-to-day
 
 **Upgrade to the latest `main`:**

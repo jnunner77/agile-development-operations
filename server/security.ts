@@ -171,7 +171,8 @@ class EventCounter {
 }
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const SIGN_IN_PATHS = new Set(['/api/auth/login', '/api/auth/password']);
+/** Paths where a 401 means someone presented bad credentials (password or webhook signature). */
+const SIGN_IN_PATHS = new Set(['/api/auth/login', '/api/auth/password', '/api/integrations/github/webhook']);
 
 function tooMany(retryAfterMs: number, what = 'requests') {
   const secs = Math.max(1, Math.ceil(retryAfterMs / 1000));
