@@ -27,7 +27,16 @@ In the [Google Cloud console](https://console.cloud.google.com):
 
 1. Create a project (or pick one), then **Billing → Budgets & alerts → Create budget** with a
    budget of $1 so you're emailed if anything is ever charged.
-2. Open **Cloud Shell** (the `>_` icon at the top right) and run:
+2. Open **Cloud Shell** (the `>_` icon at the top right). First enable Compute Engine for the
+   project (billing must be linked to the project for this to work):
+
+   ```bash
+   gcloud services enable compute.googleapis.com
+   ```
+
+   Give it a minute or two after this finishes: the project's default network is still being
+   set up, and creating a VM too soon fails with a "Retry … network connectivity issues" error.
+   If you see that, wait a minute and run the command again. Then create the VM and firewall rule:
 
    ```bash
    gcloud compute instances create boards \
@@ -42,7 +51,7 @@ In the [Google Cloud console](https://console.cloud.google.com):
    ```
 
    The machine type, one of the three free regions, and the 30 GB *standard* disk are what keep
-   it inside the free tier. Enable the Compute Engine API if prompted.
+   it inside the free tier.
 
 3. Note the VM's **external IP** from the output (or **Compute Engine → VM instances**).
 
