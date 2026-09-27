@@ -59,8 +59,8 @@ export function WorkItemsPage() {
       });
   }, [items, filters, showClosed, sort, members, sprints, projectName]);
 
-  const header = (key: SortKey, label: string) => (
-    <th className="sortable" onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }))}>
+  const header = (key: SortKey, label: string, className = '') => (
+    <th className={`sortable ${className}`} onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }))}>
       {label}
       {sort.key === key && <Icon name={sort.dir === 1 ? 'chevronDown' : 'collapseAll'} size={10} />}
     </th>
@@ -90,7 +90,7 @@ export function WorkItemsPage() {
           <label className="check-row">
             <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} /> Show done &amp; removed
           </label>
-          <span className="muted small">{rows.length} items</span>
+          <span className="muted small hide-sm">{rows.length} items</span>
         </div>
       </div>
       <FilterBar value={filters} onChange={setFilters} types={[...WORK_ITEM_TYPES]} />
@@ -112,13 +112,13 @@ export function WorkItemsPage() {
                   </th>
                   {header('id', 'ID')}
                   {header('type', 'Type')}
-                  {header('title', 'Title')}
+                  {header('title', 'Title', 'col-title')}
                   {header('state', 'State')}
-                  {header('assignedTo', 'Assigned To')}
-                  {header('iteration', 'Iteration')}
-                  <th>Tags</th>
-                  {header('dueDate', 'Due')}
-                  {header('changedAt', 'Updated')}
+                  {header('assignedTo', 'Assigned To', 'hide-sm')}
+                  {header('iteration', 'Iteration', 'hide-sm')}
+                  <th className="hide-sm">Tags</th>
+                  {header('dueDate', 'Due', 'hide-sm')}
+                  {header('changedAt', 'Updated', 'hide-sm')}
                 </tr>
               </thead>
               <tbody>
@@ -145,7 +145,7 @@ export function WorkItemsPage() {
                     <td className="muted">{w.id}</td>
                     <td>
                       <span className="row gap-s">
-                        <TypeIcon type={w.type} /> {w.type}
+                        <TypeIcon type={w.type} /> <span className="hide-sm">{w.type}</span>
                       </span>
                     </td>
                     <td className="col-title">
@@ -156,15 +156,15 @@ export function WorkItemsPage() {
                     <td>
                       <StateBadge type={w.type} state={w.state} />
                     </td>
-                    <td>
+                    <td className="hide-sm">
                       <Person id={w.assignedTo} />
                     </td>
-                    <td className="muted">{iterationName(sprints, w.iterationId, projectName)}</td>
-                    <td>
+                    <td className="muted hide-sm">{iterationName(sprints, w.iterationId, projectName)}</td>
+                    <td className="hide-sm">
                       <Tags tags={w.tags} max={2} />
                     </td>
-                    <td>{formatShortDate(w.dueDate)}</td>
-                    <td className="muted small" title={new Date(w.changedAt).toLocaleString()}>
+                    <td className="hide-sm">{formatShortDate(w.dueDate)}</td>
+                    <td className="muted small hide-sm" title={new Date(w.changedAt).toLocaleString()}>
                       {timeAgo(w.changedAt)}
                     </td>
                   </tr>

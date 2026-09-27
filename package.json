@@ -12,7 +12,8 @@
     "start": "tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:e2e": "node e2e/smoke.mjs"
+    "test:e2e": "node e2e/smoke.mjs",
+    "test:e2e:mobile": "node e2e/mobile.mjs"
   },
   "engines": {
     "node": ">=20"

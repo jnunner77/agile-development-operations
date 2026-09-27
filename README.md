@@ -135,6 +135,15 @@ otherwise passwords travel over the network unencrypted.
 - Deliveries are verified with the webhook secret (HMAC-SHA256); unsigned or tampered requests
   are rejected. The secret is stored outside the database and never sent to browsers or backups.
 
+### Phones and tablets
+- On phones a tab bar along the bottom replaces the side menu; tables show only the key
+  columns; boards swipe one column at a time; the taskboard stacks each item's To Do /
+  In Progress / Done; the work item form and dialogs fill the screen.
+- Dragging isn't available on most touch screens, so every drag action has a menu
+  alternative on the ⋯ button: Move up / down / to top / to bottom, Move to iteration,
+  Change state, Change parent and Assign to.
+- Side panes (Planning, Work details) open under the content on small screens and start closed.
+
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,
   capacity, team, settings). Restore, rename, download or delete.
@@ -169,6 +178,7 @@ npm run typecheck
 npm test                          # unit + API tests
 npm run build && npm start &      # then, against a fresh demo database:
 BASE_URL=http://localhost:4000 npm run test:e2e
+BASE_URL=http://localhost:4000 npm run test:e2e:mobile   # same, as a phone (touch, small screen)
 ```
 
 The e2e test uses Playwright's Chromium; set `CHROMIUM_PATH` to use a specific browser binary.

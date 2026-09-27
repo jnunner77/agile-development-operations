@@ -87,7 +87,7 @@ function Board({ level }: { level: BacklogLevel }) {
             ])
           }
         >
-          View options <Icon name="chevronDown" size={12} />
+          <span className="btn-label">View options</span> <Icon name="settings" size={14} className="show-sm" /> <Icon name="chevronDown" size={12} />
         </button>
         <button className={`icon-btn ${filterOpen || isFiltering(filters) ? 'active' : ''}`} title="Filter" onClick={() => setFilterOpen(!filterOpen)}>
           <Icon name="filter" />
