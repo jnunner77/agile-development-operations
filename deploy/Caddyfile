@@ -1,0 +1,14 @@
+{$DOMAIN} {
+	# Compress everything except the live-update stream, which must reach browsers unbuffered.
+	@compressible not path /api/events
+	encode @compressible zstd gzip
+
+	reverse_proxy app:4000
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+}
