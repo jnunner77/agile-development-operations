@@ -198,3 +198,29 @@ describe('sign-in', () => {
     expect((await request(forced).get('/api/bootstrap')).status).toBe(200);
   });
 });
+
+describe('deployment behind a proxy', () => {
+  it('keeps the health check public while sign-in is on', async () => {
+    await setup();
+    expect((await request(app).get('/api/bootstrap')).status).toBe(401);
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
+
+  it('marks the session cookie Secure only when a trusted proxy reports HTTPS', async () => {
+    await setup();
+    const cookieFor = async (target: ReturnType<typeof createApp>) => {
+      await request(target).post('/api/auth/login').send({ username: 'bo' });
+      const res = await request(target).post('/api/auth/password').set('X-Forwarded-Proto', 'https').send({ username: 'bo', newPassword: 'correct horse' });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return String(res.headers['set-cookie']);
+    };
+    // Without trust proxy the forwarded header is ignored.
+    expect(await cookieFor(app)).not.toMatch(/Secure/);
+    // Clear the password so the same first-time setup flow can run against the proxied app.
+    auth.resetPassword(store.db.members.find((m) => m.username === 'bo')!.id);
+    const proxied = createApp({ store, snapshots: new SnapshotManager(store), auth, trustProxy: 1 });
+    expect(await cookieFor(proxied)).toMatch(/Secure/);
+  });
+});

@@ -1,0 +1,36 @@
+# Production stack: the app plus Caddy, which obtains and renews HTTPS certificates
+# automatically. Configure it with a .env file next to this one (see deploy/.env.example).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      TRUST_PROXY: "1"
+      SEED: ${SEED:-demo}
+    volumes:
+      - boards-data:/data
+    expose:
+      - "4000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env (for example yourteam.duckdns.org)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  boards-data:
+  caddy-data:
+  caddy-config:

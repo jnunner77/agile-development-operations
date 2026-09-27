@@ -17,6 +17,11 @@ export interface AppOptions {
   staticDir?: string;
   /** Sign-in handling; one is created (sign-in off until turned on in settings) if omitted. */
   auth?: AuthManager;
+  /**
+   * Express "trust proxy" setting. Set it when running behind a reverse proxy (e.g. Caddy)
+   * so the app sees the original HTTPS scheme and marks sign-in cookies as Secure.
+   */
+  trustProxy?: boolean | number | string;
 }
 
 /** Resolve the display name of the caller from the X-User header (a member id or a name). */
@@ -33,13 +38,19 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store) }: AppOptions) {
+export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy }: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
+  if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '100mb' }));
 
   const api = express.Router();
   const admin = auth.requireAdmin;
+
+  // Liveness check for load balancers and container health checks; public and data-free.
+  api.get('/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
 
   // Must come first: with sign-in on, everything below needs a valid session.
   api.use(auth.authenticate);
