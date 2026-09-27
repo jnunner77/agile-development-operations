@@ -1,4 +1,34 @@
+{
+	servers {
+		# Drop connections that send headers or bodies too slowly (slowloris) or sit idle.
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 2m
+		}
+		max_header_size 16KB
+	}
+}
+
 {$DOMAIN} {
+	# Nothing the app accepts is bigger than a backup import (50 MB).
+	request_body {
+		max_size 60MB
+	}
+
+	# Only the methods the app uses.
+	@badMethod not method GET HEAD POST PUT PATCH DELETE
+	respond @badMethod 405
+
+	# Automated scanners looking for other software: close the connection without answering.
+	@scanners {
+		path /.env* /.git* /.svn* /.hg* /.aws* /.ssh* /.docker* /.DS_Store
+		path /wp-* /wordpress* /xmlrpc.php /phpmyadmin* /pma* /adminer* /cgi-bin/*
+		path /actuator* /server-status* /solr* /jenkins* /manager/html* /owa/* /autodiscover*
+		path *.php *.asp *.aspx *.jsp *.cgi *.sql *.bak *.old *.swp *.ini *.log
+	}
+	abort @scanners
+
 	# Compress everything except the live-update stream, which must reach browsers unbuffered.
 	@compressible not path /api/events
 	encode @compressible zstd gzip
@@ -6,9 +36,10 @@
 	reverse_proxy app:4000
 
 	header {
-		Strict-Transport-Security "max-age=31536000"
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"
 		-Server
+		-Via
 	}
 }

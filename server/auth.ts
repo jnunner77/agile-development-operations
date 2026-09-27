@@ -72,6 +72,10 @@ const blankAccount = (): Account => ({ isAdmin: false, passwordHash: null, passw
 
 export const SESSION_COOKIE = 'boards_session';
 const MAX_FAILURES = 5;
+/** Sessions end after this long however active they are (or the inactivity timeout, if longer). */
+const SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
+/** Oldest sessions are dropped beyond this many per person. */
+const MAX_SESSIONS_PER_MEMBER = 20;
 const LOCK_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 
@@ -105,7 +109,7 @@ export interface AuthOptions {
 export class AuthManager {
   private data: AuthFile;
   private readonly file: string;
-  private readonly sessions = new Map<string, { memberId: string; lastSeen: number }>();
+  private readonly sessions = new Map<string, { memberId: string; lastSeen: number; createdAt: number }>();
   private readonly failures = new Map<string, { count: number; lockedUntil: number }>();
   readonly overridden: boolean;
   private readonly now: () => number;
@@ -204,15 +208,22 @@ export class AuthManager {
 
   private createSession(memberId: string) {
     this.sweepSessions();
+    const mine = [...this.sessions].filter(([, s]) => s.memberId === memberId).sort((a, b) => a[1].createdAt - b[1].createdAt);
+    for (const [token] of mine.slice(0, Math.max(0, mine.length - MAX_SESSIONS_PER_MEMBER + 1))) this.sessions.delete(token);
     const token = crypto.randomBytes(32).toString('base64url');
-    this.sessions.set(token, { memberId, lastSeen: this.now() });
+    const now = this.now();
+    this.sessions.set(token, { memberId, lastSeen: now, createdAt: now });
     return token;
+  }
+
+  private maxAgeMs() {
+    return Math.max(SESSION_MAX_AGE_MS, this.data.settings.sessionTimeoutMinutes * 60_000);
   }
 
   private sweepSessions() {
     const limit = this.data.settings.sessionTimeoutMinutes * 60_000;
     const now = this.now();
-    for (const [token, s] of this.sessions) if (now - s.lastSeen > limit) this.sessions.delete(token);
+    for (const [token, s] of this.sessions) if (now - s.lastSeen > limit || now - s.createdAt > this.maxAgeMs()) this.sessions.delete(token);
   }
 
   private revokeSessions(memberId: string) {
@@ -228,6 +239,7 @@ export class AuthManager {
     const account = this.account(s.memberId);
     const valid =
       now - s.lastSeen <= this.data.settings.sessionTimeoutMinutes * 60_000 &&
+      now - s.createdAt <= this.maxAgeMs() &&
       member?.active &&
       !!member.username &&
       !!account.passwordHash &&
@@ -398,16 +410,26 @@ export class AuthManager {
    * so history and comments are attributed to who actually made the change.
    */
   authenticate = (req: Request, res: Response, next: NextFunction) => {
-    const token = readCookie(req, SESSION_COOKIE);
-    const member = token ? this.resolve(token) : null;
-    res.locals.authMember = member;
-    res.locals.authToken = member ? token : undefined;
+    const member = this.identify(req, res);
     if (!this.enabled) return next();
     if (member) req.headers['x-user'] = encodeURIComponent(member.id);
     else delete req.headers['x-user'];
     if (PUBLIC_PATHS.has(req.path)) return next();
     if (!member) return res.status(401).json({ error: 'Please sign in', code: 'signin' });
     next();
+  };
+
+  /**
+   * Work out who is calling (without rejecting anyone) so rate limits can be applied per
+   * person before sign-in is enforced. Safe to call more than once per request.
+   */
+  identify = (req: Request, res: Response): Member | null => {
+    if (res.locals.authMember !== undefined) return res.locals.authMember as Member | null;
+    const token = readCookie(req, SESSION_COOKIE);
+    const member = token ? this.resolve(token) : null;
+    res.locals.authMember = member;
+    res.locals.authToken = member ? token : undefined;
+    return member;
   };
 
   /** Restrict a route to administrators while sign-in is on. With sign-in off anyone may use it. */
