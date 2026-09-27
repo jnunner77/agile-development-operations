@@ -8,6 +8,8 @@ export type Timestamp = string;
 export interface Member {
   id: string;
   name: string;
+  /** Short unique login-style handle, e.g. "jnunner". Empty when not set. */
+  username: string;
   email: string;
   color: string;
   active: boolean;

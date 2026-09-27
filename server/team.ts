@@ -25,6 +25,11 @@ export const sprintSchema = z
 export const memberSchema = z
   .object({
     name: z.string().trim().min(1, 'Name is required').max(128),
+    username: z
+      .string()
+      .trim()
+      .max(64, 'Username must be 64 characters or fewer')
+      .regex(/^[A-Za-z0-9._-]*$/, 'Username can only contain letters, numbers, dots, dashes and underscores'),
     email: z.string().trim().max(256),
     color: z.string().regex(/^#[0-9a-f]{6}$/i),
     active: z.boolean(),
@@ -161,11 +166,20 @@ export function copyCapacity(tx: Tx, sprintId: string, fromSprintId: string) {
   return cap;
 }
 
+/** Usernames are optional, but when set they must be unique (ignoring case). */
+function assertUsernameFree(tx: Tx, username: string | undefined, selfId?: string) {
+  if (!username) return;
+  const taken = tx.db.members.find((m) => m.id !== selfId && m.username && m.username.toLowerCase() === username.toLowerCase());
+  if (taken) throw badRequest(`Username "${username}" is already used by ${taken.name}`);
+}
+
 export function createMember(tx: Tx, input: z.infer<typeof memberSchema>) {
   if (!input.name) throw badRequest('Name is required');
+  assertUsernameFree(tx, input.username);
   const member = {
     id: randomUUID(),
     name: input.name,
+    username: input.username ?? '',
     email: input.email ?? '',
     color: input.color ?? PALETTE[tx.db.members.length % PALETTE.length],
     active: input.active ?? true,
@@ -177,6 +191,7 @@ export function createMember(tx: Tx, input: z.infer<typeof memberSchema>) {
 
 export function updateMember(tx: Tx, id: string, input: z.infer<typeof memberSchema>) {
   const member = tx.member(id);
+  assertUsernameFree(tx, input.username, id);
   Object.assign(member, input);
   tx.members.add(id);
   return member;

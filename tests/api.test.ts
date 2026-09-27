@@ -220,6 +220,20 @@ describe('sprints, team and capacity', () => {
     expect((await request(app).patch(`/api/workitems/${w.id}`).send({ assignedTo: 'nobody' })).status).toBe(404);
     expect((await request(app).patch(`/api/workitems/${w.id}`).send({ iterationId: 'nope' })).status).toBe(404);
   });
+
+  it('stores member usernames and keeps them unique', async () => {
+    const ann = (await request(app).post('/api/members').send({ name: 'Ann', username: ' ann.lee ' })).body.result;
+    expect(ann.username).toBe('ann.lee');
+    const bob = (await request(app).post('/api/members').send({ name: 'Bob' })).body.result;
+    expect(bob.username).toBe('');
+    // Duplicates are rejected regardless of case, on create and on update.
+    expect((await request(app).post('/api/members').send({ name: 'Other', username: 'ANN.LEE' })).status).toBe(400);
+    expect((await request(app).patch(`/api/members/${bob.id}`).send({ username: 'Ann.Lee' })).status).toBe(400);
+    expect((await request(app).post('/api/members').send({ name: 'Bad', username: 'has space' })).status).toBe(400);
+    // Saving a member with its own username is fine; several members may leave it blank.
+    expect((await request(app).patch(`/api/members/${ann.id}`).send({ name: 'Ann Lee', username: 'ann.lee' })).status).toBe(200);
+    expect((await request(app).post('/api/members').send({ name: 'Cy', username: '' })).status).toBe(201);
+  });
 });
 
 describe('snapshots and backups', () => {

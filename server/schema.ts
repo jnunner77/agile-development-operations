@@ -98,7 +98,7 @@ export function normalizeDatabase(raw: unknown): Database {
     version: typeof src.version === 'number' ? src.version : 1,
     nextWorkItemId: Math.max(typeof src.nextWorkItemId === 'number' ? src.nextWorkItemId : 1, maxId + 1),
     settings: { ...defaultSettings(), ...(isObj(src.settings) ? (src.settings as Partial<Settings>) : {}) },
-    members: src.members as Member[],
+    members: (src.members as Partial<Member>[]).map((m) => ({ ...m, username: typeof m.username === 'string' ? m.username : '' }) as Member),
     sprints: (src.sprints as Partial<Sprint>[]).map((s) => ({ goal: '', startDate: null, finishDate: null, ...s }) as Sprint),
     capacities: Array.isArray(src.capacities) ? (src.capacities as SprintCapacity[]) : [],
     workItems,

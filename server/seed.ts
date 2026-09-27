@@ -12,11 +12,11 @@ export function buildDemoDatabase(today: string = todayLocal()): Database {
   const db = emptyDatabase({ projectName: 'Fabrikam', teamName: 'Fabrikam Team', areaPaths: ['Fabrikam', 'Fabrikam\\Web', 'Fabrikam\\Mobile', 'Fabrikam\\Platform'] });
 
   const members: Member[] = [
-    { id: randomUUID(), name: 'Alex Johnson', email: 'alex@fabrikam.example', color: '#0078d4', active: true },
-    { id: randomUUID(), name: 'Priya Patel', email: 'priya@fabrikam.example', color: '#8764b8', active: true },
-    { id: randomUUID(), name: 'Marcus Chen', email: 'marcus@fabrikam.example', color: '#00b294', active: true },
-    { id: randomUUID(), name: 'Sofia Rossi', email: 'sofia@fabrikam.example', color: '#e3008c', active: true },
-    { id: randomUUID(), name: 'Dana Kim', email: 'dana@fabrikam.example', color: '#ca5010', active: true },
+    { id: randomUUID(), name: 'Alex Johnson', username: 'alex', email: 'alex@fabrikam.example', color: '#0078d4', active: true },
+    { id: randomUUID(), name: 'Priya Patel', username: 'priya', email: 'priya@fabrikam.example', color: '#8764b8', active: true },
+    { id: randomUUID(), name: 'Marcus Chen', username: 'marcus', email: 'marcus@fabrikam.example', color: '#00b294', active: true },
+    { id: randomUUID(), name: 'Sofia Rossi', username: 'sofia', email: 'sofia@fabrikam.example', color: '#e3008c', active: true },
+    { id: randomUUID(), name: 'Dana Kim', username: 'dana', email: 'dana@fabrikam.example', color: '#ca5010', active: true },
   ];
   const [alex, priya, marcus, sofia, dana] = members;
   db.members = members;

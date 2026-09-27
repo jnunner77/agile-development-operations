@@ -135,6 +135,7 @@ function TeamSettings() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Username</th>
               <th>Email</th>
               <th>Status</th>
               <th>Open items</th>
@@ -149,6 +150,7 @@ function TeamSettings() {
                     <Avatar member={m} size={26} /> {m.name}
                   </span>
                 </td>
+                <td className="muted">{m.username}</td>
                 <td className="muted">{m.email}</td>
                 <td>{m.active ? 'Active' : <span className="muted">Inactive</span>}</td>
                 <td className="num">{items.filter((w) => w.assignedTo === m.id && w.state !== 'Done' && w.state !== 'Removed').length}</td>
@@ -184,12 +186,13 @@ function TeamSettings() {
 
 function MemberDialog({ member, onClose }: { member?: Member; onClose: () => void }) {
   const [name, setName] = useState(member?.name ?? '');
+  const [username, setUsername] = useState(member?.username ?? '');
   const [email, setEmail] = useState(member?.email ?? '');
   const [color, setColor] = useState(member?.color ?? '#0078d4');
   const [active, setActive] = useState(member?.active ?? true);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const input = { name: name.trim(), email: email.trim(), active, ...(member || color !== '#0078d4' ? { color } : {}) };
+    const input = { name: name.trim(), username: username.trim(), email: email.trim(), active, ...(member || color !== '#0078d4' ? { color } : {}) };
     if (member) await api.updateMember(member.id, input);
     else await api.createMember(input);
     onClose();
@@ -200,6 +203,19 @@ function MemberDialog({ member, onClose }: { member?: Member; onClose: () => voi
         <label>
           Display name
           <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus maxLength={128} />
+        </label>
+        <label>
+          Username
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            maxLength={64}
+            pattern="[A-Za-z0-9._\-]*"
+            title="Letters, numbers, dots, dashes and underscores"
+            placeholder="e.g. jnunner"
+            autoComplete="off"
+            spellCheck={false}
+          />
         </label>
         <label>
           Email
