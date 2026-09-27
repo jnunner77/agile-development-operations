@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TYPE_DEFS, type WorkItemType } from '../../../shared/process';
-import { sprintTimeframe } from '../../../shared/sprints';
-import type { WorkItem } from '../../../shared/types';
+import { nextSprint, sprintTimeframe } from '../../../shared/sprints';
+import type { Sprint, WorkItem } from '../../../shared/types';
 import { api } from '../api';
 import { Modal, confirmDialog, type MenuItem } from '../components/common';
 import { WorkItemPicker } from '../components/inputs';
@@ -14,6 +14,8 @@ export interface ItemMenuOptions {
   onAddChild?: (parent: WorkItem, type: WorkItemType) => void;
   /** Show "Move to top/bottom" entries, ordering relative to these items. */
   reorderWithin?: WorkItem[];
+  /** The sprint being viewed: adds quick "Move to next sprint" and "Move to backlog" entries. */
+  sprint?: Sprint;
 }
 
 /** Context menu entries shared by the backlog, boards and sprint views. */
@@ -75,8 +77,20 @@ export function useItemMenu() {
       );
     }
 
+    if (opts.sprint) {
+      const next = nextSprint(sprints, opts.sprint);
+      menu.push(
+        {
+          label: next ? `Move to next sprint (${next.name})` : 'Move to next sprint (none planned yet)',
+          icon: 'sprint',
+          disabled: !next,
+          onClick: () => next && moveTo(ids, next.id),
+        },
+        { label: 'Move to backlog', icon: 'backlog', onClick: () => moveTo(ids, null) },
+      );
+    }
     menu.push({
-      label: 'Move to iteration',
+      label: opts.sprint ? 'Move to another iteration' : 'Move to iteration',
       icon: 'sprint',
       submenu: [
         { label: `${projectName} (Backlog)`, checked: selection.every((w) => !w.iterationId), onClick: () => moveTo(ids, null) },
@@ -147,6 +161,7 @@ export function useItemMenu() {
   const moveTo = async (ids: number[], iterationId: string | null) => {
     await api.bulkUpdate(ids, { iterationId });
     const name = iterationId ? sprints.find((s) => s.id === iterationId)?.name : 'the backlog';
+    // The server moves a backlog item's open tasks along with it.
     toast(`Moved ${ids.length === 1 ? `#${ids[0]}` : `${ids.length} items`} to ${name}`, 'success');
   };
 

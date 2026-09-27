@@ -19,6 +19,13 @@ export function sortSprints(sprints: Sprint[]): Sprint[] {
   });
 }
 
+/** The sprint that follows `sprint` in date order (undated sprints come last), if any. */
+export function nextSprint(sprints: Sprint[], sprint: Sprint): Sprint | undefined {
+  const sorted = sortSprints(sprints);
+  const idx = sorted.findIndex((s) => s.id === sprint.id);
+  return idx >= 0 ? sorted[idx + 1] : undefined;
+}
+
 export function currentSprint(sprints: Sprint[], today: DateString): Sprint | undefined {
   return sortSprints(sprints).find((s) => sprintTimeframe(s, today) === 'current');
 }

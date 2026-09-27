@@ -69,6 +69,9 @@ Start empty instead with `SEED=empty npm start`, or use **Project settings → S
 - **Taskboard**: rows per backlog item (or per person), To Do / In Progress / Done columns, drag tasks
   across columns and rows, inline remaining-hours editing, person filter.
 - **Sprint backlog**: ordered list of the sprint's items and their tasks.
+- **Move work out of a sprint**: any item's menu (right-click or `…`) on the taskboard or sprint
+  backlog has **Move to next sprint** and **Move to backlog**; the sprint's `…` menu moves *all*
+  unfinished work at once. Open tasks travel with their backlog item; finished work stays put.
 - **Capacity**: per member activities & hours per day, **personal days off** and **team days off**
   (date ranges), copy from a previous sprint. Working days are configurable.
 - **Work details** panel: remaining work vs. remaining capacity for the team, per activity and per person.

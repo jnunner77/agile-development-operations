@@ -158,12 +158,15 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                     <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} />
                   </button>
                   {lane.parent ? (
-                    <div className="tb-parent-card" style={{ borderLeftColor: TYPE_DEFS[lane.parent.type].color }} onContextMenu={(e) => menu.openAt(e, itemMenu.build([lane.parent!]))}>
+                    <div className="tb-parent-card" style={{ borderLeftColor: TYPE_DEFS[lane.parent.type].color }} onContextMenu={(e) => menu.openAt(e, itemMenu.build([lane.parent!], { sprint }))}>
                       <div className="card-top">
                         <TypeIcon type={lane.parent.type} size={14} />
                         <span className="card-id">{lane.parent.id}</span>
                         <button className="card-title" onClick={() => open(lane.parent!.id)}>
                           {lane.parent.title}
+                        </button>
+                        <button className="icon-btn card-more" aria-label="Actions" onClick={(e) => menu.openAt(e, itemMenu.build([lane.parent!], { sprint }))}>
+                          <Icon name="more" size={14} />
                         </button>
                       </div>
                       {!isCollapsed && (
@@ -262,7 +265,7 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                               const pos = dropPosition(e);
                               if (drop?.id !== t.id || drop.pos !== pos) setDrop({ lane: lane.key, column, id: t.id, pos });
                             }}
-                            onMenu={(e) => menu.openAt(e, itemMenu.build([t]))}
+                            onMenu={(e) => menu.openAt(e, itemMenu.build([t], { sprint }))}
                           />
                         ))}
                       </div>

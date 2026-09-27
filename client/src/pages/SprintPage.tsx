@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { formatDayMonth, formatShortDate } from '../../../shared/dates';
-import { computeCapacity, computeSprintWork, defaultSprint, sprintTimeframe } from '../../../shared/sprints';
+import { isClosed } from '../../../shared/process';
+import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, sprintTimeframe } from '../../../shared/sprints';
 import type { Sprint, SprintCapacity } from '../../../shared/types';
 import { api } from '../api';
 import { EmptyState, ProgressBar, confirmDialog, useMenu } from '../components/common';
@@ -79,6 +80,28 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
     };
   });
 
+  const next = nextSprint(sprints, sprint);
+
+  /** Move every unfinished backlog item (and its open tasks) out of this sprint. Done work stays for the record. */
+  const moveUnfinished = async (target: Sprint | null) => {
+    const items = useStore.getState().workItems.filter((w) => w.iterationId === sprint.id && !isClosed(w.type, w.state));
+    const reqs = items.filter((w) => w.type !== 'Task');
+    const reqIds = new Set(reqs.map((w) => w.id));
+    // Open tasks whose parent isn't moving (no parent, or the parent is done) are moved too.
+    const strayTasks = items.filter((w) => w.type === 'Task' && (w.parentId == null || !reqIds.has(w.parentId)));
+    const ids = [...reqs, ...strayTasks].map((w) => w.id);
+    if (!ids.length) return toast(`${sprint.name} has no unfinished work`);
+    const where = target ? target.name : 'the backlog';
+    const ok = await confirmDialog({
+      title: `Move unfinished work to ${where}?`,
+      message: `${reqs.length} unfinished backlog item${reqs.length === 1 ? '' : 's'}${strayTasks.length ? ` and ${strayTasks.length} other open task${strayTasks.length === 1 ? '' : 's'}` : ''} will move from ${sprint.name} to ${where}. Open tasks go with their backlog items. Finished work stays in ${sprint.name}.`,
+      confirmLabel: 'Move',
+    });
+    if (!ok) return;
+    await api.bulkUpdate(ids, { iterationId: target?.id ?? null });
+    toast(`Moved unfinished work to ${where}`, 'success');
+  };
+
   const deleteSprint = async () => {
     const others = sprints.filter((s) => s.id !== sprint.id);
     const next = others.find((s) => sprintTimeframe(s, today) !== 'past' && s.startDate && sprint.startDate && s.startDate > sprint.startDate);
@@ -122,6 +145,14 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
             aria-label="Sprint actions"
             onClick={(e) =>
               menu.openAt(e, [
+                {
+                  label: next ? `Move unfinished work to ${next.name}` : 'Move unfinished work to next sprint (none planned yet)',
+                  icon: 'sprint',
+                  disabled: !next,
+                  onClick: () => next && void moveUnfinished(next),
+                },
+                { label: 'Move unfinished work to backlog', icon: 'backlog', onClick: () => void moveUnfinished(null) },
+                { divider: true },
                 { label: 'Edit sprint', icon: 'edit', onClick: () => setEditing(true) },
                 { label: 'Delete sprint', icon: 'trash', danger: true, onClick: deleteSprint },
               ])

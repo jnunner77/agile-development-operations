@@ -1802,6 +1802,7 @@ tr.selected .row-more {
   height: 22px;
 }
 .card:hover .card-more,
+.tb-parent-card:hover .card-more,
 .task-card:hover .card-more {
   visibility: visible;
 }

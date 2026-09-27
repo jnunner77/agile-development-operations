@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeBurndown, fieldValueAt } from '../shared/burndown';
 import { addDays, countDaysOff, isValidDate, workingDaysBetween } from '../shared/dates';
-import { computeCapacity, computeSprintWork, defaultSprint, suggestNextSprint } from '../shared/sprints';
+import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, suggestNextSprint } from '../shared/sprints';
 import type { Sprint, SprintCapacity, WorkItem } from '../shared/types';
 import { blankWorkItem } from '../server/schema';
 
@@ -69,6 +69,17 @@ describe('sprint helpers', () => {
     expect(defaultSprint([sprint, s2], '2026-03-01')?.id).toBe('s2');
     expect(suggestNextSprint([sprint, s2], '2026-01-20')).toEqual({ name: 'Sprint 3', startDate: '2026-02-02', finishDate: '2026-02-13' });
     expect(suggestNextSprint([], '2026-01-07')).toEqual({ name: 'Sprint 1', startDate: '2026-01-12', finishDate: '2026-01-23' });
+  });
+});
+
+describe('nextSprint', () => {
+  it('finds the following sprint by date, with undated sprints last', () => {
+    const s2: Sprint = { ...sprint, id: 's2', name: 'Sprint 2', startDate: '2026-01-19', finishDate: '2026-01-30' };
+    const later: Sprint = { ...sprint, id: 's9', name: 'Someday', startDate: null, finishDate: null };
+    const list = [later, s2, sprint]; // deliberately out of order
+    expect(nextSprint(list, sprint)?.id).toBe('s2');
+    expect(nextSprint(list, s2)?.id).toBe('s9');
+    expect(nextSprint(list, later)).toBeUndefined();
   });
 });
 

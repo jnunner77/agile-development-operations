@@ -100,7 +100,7 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
           void onDrop(w);
         }}
         onDoubleClick={() => open(w.id)}
-        onContextMenu={(e) => menu.openAt(e, itemMenu.build([w], { reorderWithin: depth ? undefined : reqs, onAddChild: (p) => setTaskFor(p.id) }))}
+        onContextMenu={(e) => menu.openAt(e, itemMenu.build([w], { sprint, reorderWithin: depth ? undefined : reqs, onAddChild: (p) => setTaskFor(p.id) }))}
       >
         <td className="col-drag">
           <Icon name="drag" size={12} />
@@ -158,7 +158,7 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
           <Tags tags={w.tags} max={2} />
         </td>
         <td className="col-actions">
-          <button className="icon-btn row-more" aria-label="Actions" onClick={(e) => menu.openAt(e, itemMenu.build([w], { reorderWithin: depth ? undefined : reqs, onAddChild: (p) => setTaskFor(p.id) }))}>
+          <button className="icon-btn row-more" aria-label="Actions" onClick={(e) => menu.openAt(e, itemMenu.build([w], { sprint, reorderWithin: depth ? undefined : reqs, onAddChild: (p) => setTaskFor(p.id) }))}>
             <Icon name="more" size={14} />
           </button>
         </td>
