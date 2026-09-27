@@ -97,7 +97,7 @@ function Backlog({ level }: { level: BacklogLevel }) {
   const projectName = useStore((s) => s.settings.projectName);
   const itemsById = useItemsById();
   const children = useChildrenMap();
-  const { open } = useWorkItemDialog();
+  const { open, openNew } = useWorkItemDialog();
   const itemMenu = useItemMenu();
   const menu = useMenu();
 
@@ -204,6 +204,13 @@ function Backlog({ level }: { level: BacklogLevel }) {
   };
 
   const startChildAdd = (parent: WorkItem, type: WorkItemType) => {
+    // Inline add rows only render under this backlog's own level rows. For a
+    // child row (e.g. a Feature on the Epics backlog) open the full form instead,
+    // otherwise the inline row never appears and nothing can be created.
+    if (!levelTypes.includes(parent.type)) {
+      openNew(type, { parentId: parent.id, iterationId: type === 'Task' ? parent.iterationId : null });
+      return;
+    }
     setChildAdd({ parentId: parent.id, type });
     setChildTitle('');
     setExpanded((s) => new Set(s).add(parent.id));
