@@ -218,7 +218,7 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                 </div>
                 {isCollapsed ? (
                   TASK_COLUMNS.map((c) => (
-                    <div key={c} className="tb-cell collapsed-cell muted small">
+                    <div key={c} className="tb-cell collapsed-cell muted small" data-column={c}>
                       {lane.tasks.filter((t) => t.state === c).length || ''}
                     </div>
                   ))
@@ -230,6 +230,7 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                       <div
                         key={column}
                         className={`tb-cell ${active ? 'drop-active' : ''}`}
+                        data-column={column}
                         onDragOver={(e) => {
                           const ids = draggedIds();
                           if (!ids.length || !ids.every((id) => itemsById.get(id)?.type === 'Task')) return;

@@ -91,3 +91,23 @@ export function rollup(item: WorkItem, children: Map<number | null, WorkItem[]>)
   walk(item);
   return { remaining, completed, original, hasChildren };
 }
+
+const NARROW_QUERY = '(max-width: 900px)';
+
+/** True on phone- and small-tablet-sized screens. */
+export function isNarrowScreen() {
+  return typeof window !== 'undefined' && !!window.matchMedia?.(NARROW_QUERY).matches;
+}
+
+/** Re-renders when the screen crosses the narrow breakpoint (e.g. rotating a phone). */
+export function useIsNarrow() {
+  const [narrow, setNarrow] = useState(isNarrowScreen);
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW_QUERY);
+    if (!mq) return;
+    const onChange = () => setNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}

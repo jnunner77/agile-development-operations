@@ -250,14 +250,14 @@ function WorkItemForm({ item, newType, newParentId, newIterationId, onClose, onC
           <div className="wi-header-top">
             <span className="wi-type-label">
               <TypeIcon type={type} />
-              {def.name.toUpperCase()} {item ? item.id : '*'}
+              <span className="wi-type-name">{def.name.toUpperCase()}</span> {item ? item.id : '*'}
             </span>
             <div className="wi-header-actions">
               {dirty && <span className="dirty-dot" title="Unsaved changes" />}
               <button className="btn btn-primary" disabled={saving || (!dirty && !isNew)} onClick={() => save(true)}>
                 <Icon name="save" size={14} /> Save &amp; Close
               </button>
-              <button className="btn" disabled={saving || (!dirty && !isNew)} onClick={() => save(false)} title="Save (Ctrl+S)">
+              <button className="btn wi-save-only" disabled={saving || (!dirty && !isNew)} onClick={() => save(false)} title="Save (Ctrl+S)">
                 Save
               </button>
               {item && (

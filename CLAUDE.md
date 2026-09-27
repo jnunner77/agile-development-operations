@@ -10,7 +10,9 @@ shared by both (`shared/`). See `README.md` for features and `deploy/README.md` 
   latest `main`, and is merged back through a pull request.
 - Before pushing, run and pass: `npm run typecheck`, `npm test`, and `npm run build`. For UI
   changes, also run the browser smoke test (`npm run build && npm start`, then
-  `BASE_URL=http://localhost:4000 npm run test:e2e` against a fresh demo database).
+  `BASE_URL=http://localhost:4000 npm run test:e2e` and `npm run test:e2e:mobile` against a
+  fresh demo database). UI must keep working on phones: check small screens (≤ 640px) and
+  give every drag-and-drop action a menu alternative for touch screens.
 
 ## Link your work to work items
 

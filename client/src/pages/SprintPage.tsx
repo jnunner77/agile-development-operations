@@ -9,7 +9,7 @@ import { EmptyState, ProgressBar, confirmDialog, useMenu } from '../components/c
 import { Icon } from '../components/Icon';
 import { SprintDialog } from '../components/SprintDialog';
 import { formatHours } from '../lib/format';
-import { useLocalState, useMembersById, useSortedSprints, useToday } from '../lib/hooks';
+import { isNarrowScreen, useLocalState, useMembersById, useSortedSprints, useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';
 import { PlanningPane } from './BacklogPage';
 import { Analytics } from './sprint/Analytics';
@@ -68,7 +68,7 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
   // One side pane at a time: planning (drag work to other sprints) or work details.
-  const [side, setSide] = useLocalState<{ pane: 'planning' | 'details' | 'none' }>('sprint.sidePane', { pane: 'details' });
+  const [side, setSide] = useLocalState<{ pane: 'planning' | 'details' | 'none' }>('sprint.sidePane', { pane: isNarrowScreen() ? 'none' : 'details' });
   const [showPastSprints, setShowPastSprints] = useState(false);
   const [previewCapacity, setPreviewCapacity] = useState<SprintCapacity | null>(null);
   const tf = sprintTimeframe(sprint, today);
@@ -183,12 +183,12 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
           <div className="spacer" />
           {planningAvailable && (
             <button className={`btn btn-ghost ${planningVisible ? 'active' : ''}`} onClick={() => togglePane('planning')} title="Drag items onto another sprint or the backlog">
-              <Icon name="sprint" size={14} /> Planning
+              <Icon name="sprint" size={14} /> <span className="btn-label">Planning</span>
             </button>
           )}
           {view !== 'analytics' && (
             <button className={`btn btn-ghost ${detailsVisible ? 'active' : ''}`} onClick={() => togglePane('details')}>
-              <Icon name="pane" size={14} /> Work details
+              <Icon name="pane" size={14} /> <span className="btn-label">Work details</span>
             </button>
           )}
         </div>

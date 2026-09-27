@@ -57,6 +57,16 @@ export function useItemMenu() {
     if (opts.reorderWithin?.length) {
       const ordered = [...opts.reorderWithin].sort((a, b) => a.stackRank - b.stackRank);
       const others = ordered.filter((w) => !ids.includes(w.id));
+      // Step-by-step moves, for touch screens where rows can't be dragged.
+      if (single) {
+        const idx = ordered.findIndex((w) => w.id === single.id);
+        const prev = idx > 0 ? ordered[idx - 1] : undefined;
+        const next = idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1] : undefined;
+        menu.push(
+          { label: 'Move up', icon: 'collapseAll', disabled: !prev, onClick: () => prev && api.moveWorkItem(single.id, { beforeId: prev.id }) },
+          { label: 'Move down', icon: 'expandAll', disabled: !next, onClick: () => next && api.moveWorkItem(single.id, { afterId: next.id }) },
+        );
+      }
       menu.push(
         {
           label: 'Move to top',

@@ -2380,9 +2380,6 @@ tr.selected .row-more {
   .sidenav-section {
     display: none;
   }
-  .side-pane {
-    display: none;
-  }
   .topbar-search {
     width: 160px;
   }
@@ -2634,4 +2631,476 @@ tr.selected .row-more {
   padding: 1px 4px;
   border-radius: 2px;
   font-size: 12px;
+}
+
+/* ---------- Touch screens -------------------------------------------------- */
+.bottomnav,
+.topbar-project,
+.icon.show-sm,
+.hint-touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .hint-pointer {
+    display: none;
+  }
+  .hint-touch {
+    display: block;
+  }
+  /* Hover-only controls are always visible, and targets are finger-sized. */
+  .row-more,
+  .row-add,
+  .card-more,
+  .tb-add,
+  tr .col-drag .icon {
+    visibility: visible !important;
+  }
+  .icon-btn {
+    min-width: 36px;
+    height: 36px;
+  }
+  .btn {
+    height: 38px;
+  }
+  .menu-item {
+    padding: 11px 14px 11px 10px;
+  }
+  /* iOS zooms into inputs smaller than 16px when focused. */
+  input,
+  select,
+  textarea,
+  .rte-content {
+    font-size: 16px;
+  }
+  .col-drag {
+    display: none;
+  }
+}
+
+/* Tablets and small laptops: side panes stack under the content instead of beside it. */
+@media (max-width: 900px) {
+  .page-body.split {
+    flex-direction: column;
+  }
+  .page-body.split > .grid-wrap,
+  .sprint-main {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .side-pane {
+    width: 100%;
+    max-height: 45%;
+    flex: 0 0 auto;
+    border-left: none;
+    border-top: 2px solid var(--border);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+  }
+  .board {
+    scroll-snap-type: x mandatory;
+    overflow-x: auto;
+  }
+  .board-column {
+    scroll-snap-align: start;
+  }
+}
+
+/* ---------- Phones ------------------------------------------------------- */
+@media (max-width: 640px) {
+  :root {
+    --bottomnav-h: 58px;
+  }
+  .shell,
+  .shell.nav-collapsed {
+    grid-template-columns: 1fr;
+    padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
+  }
+  .sidenav {
+    display: none;
+  }
+  .bottomnav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 150;
+    height: calc(var(--bottomnav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+  }
+  .bottomnav-link {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-2);
+    text-decoration: none;
+    min-width: 0;
+  }
+  .bottomnav-link:hover {
+    text-decoration: none;
+  }
+  .bottomnav-link.active {
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .bottomnav-link.active .icon {
+    color: var(--accent);
+  }
+
+  /* Top bar: project badge, search, connection, avatar. */
+  .topbar {
+    height: 52px;
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .topbar-project {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+  }
+  .topbar-search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    margin-left: 0;
+  }
+  .user-switch select {
+    max-width: 110px;
+  }
+  .user-menu-name {
+    display: none;
+  }
+
+  /* Page headers */
+  .page-header {
+    padding: 8px 12px 0;
+  }
+  .page-title-row {
+    gap: 8px;
+    min-height: 32px;
+  }
+  .page-title-row h1,
+  .sprint-picker {
+    font-size: 17px;
+  }
+  .toolbar {
+    gap: 2px;
+    min-height: 40px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar,
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  .tabs a,
+  .tabs button {
+    white-space: nowrap;
+    padding: 8px 8px;
+  }
+  .sprint-goal {
+    padding-left: 0;
+  }
+  .sprint-dates {
+    font-size: 12px;
+  }
+  .view-toolbar,
+  .filter-bar,
+  .add-panel {
+    padding: 8px 12px;
+  }
+  .view-toolbar {
+    gap: 6px;
+  }
+  .filter-keyword {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .add-panel {
+    flex-wrap: wrap;
+  }
+  .add-panel input:not([type='checkbox']) {
+    flex-basis: 100%;
+  }
+
+  /* Tables: fewer columns, avatars instead of names */
+  .hide-sm {
+    display: none;
+  }
+  .col-title {
+    min-width: 0;
+    width: 100%;
+  }
+  .btn-label {
+    display: none;
+  }
+  .icon.show-sm {
+    display: inline-block;
+  }
+  .user-switch {
+    position: relative;
+  }
+  /* The avatar is the visible control; the native picker sits invisibly on top of it. */
+  .user-switch select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    max-width: none;
+  }
+  .col-person .person-name,
+  .row-add {
+    display: none;
+  }
+  .col-title > .title-link {
+    display: block;
+    max-width: 100%;
+  }
+  .grid td,
+  .grid th {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .grid td {
+    height: 44px;
+  }
+  .grid-wrap {
+    overflow-x: auto;
+  }
+
+  /* Boards: one column per screen, swipe between them */
+  .board {
+    padding: 12px;
+    gap: 10px;
+  }
+  .board-column {
+    flex: 0 0 86%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  /* Taskboard: each backlog item is a block with its task columns stacked */
+  .taskboard {
+    min-width: 0;
+    padding: 0 12px 16px;
+  }
+  .taskboard-head {
+    display: none;
+  }
+  .tb-lane {
+    grid-template-columns: 1fr;
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+  }
+  .tb-lane-header {
+    padding: 8px;
+  }
+  .tb-cell {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    min-height: 0;
+    padding: 6px 8px 10px;
+  }
+  .tb-cell::before {
+    content: attr(data-column);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .tb-lane.collapsed .tb-cell {
+    display: none;
+  }
+
+  /* Capacity & analytics */
+  .capacity-summary,
+  .tiles {
+    padding: 12px 12px 4px;
+    gap: 8px;
+  }
+  .stat,
+  .tile {
+    min-width: 0;
+    flex: 1 1 calc(50% - 8px);
+    padding: 8px 12px;
+  }
+  .stat-value,
+  .tile-value {
+    font-size: 18px;
+  }
+  .capacity .grid-wrap {
+    margin: 8px 12px 16px;
+  }
+  .chart-card {
+    margin: 8px 12px 12px;
+    padding: 12px;
+  }
+
+  /* Work item form: full screen */
+  .modal-backdrop:has(.wi-form) {
+    padding: 0;
+  }
+  .wi-form {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+  .wi-header {
+    padding: 8px 12px 0;
+  }
+  .wi-header-top {
+    gap: 6px;
+  }
+  .wi-type-label {
+    font-size: 11px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .wi-header-actions {
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .wi-header-actions .btn {
+    padding: 0 10px;
+  }
+  .wi-type-name,
+  .wi-save-only {
+    display: none;
+  }
+  .wi-title {
+    font-size: 18px;
+    margin: 4px 0;
+  }
+  .wi-header-row {
+    gap: 8px 12px;
+    padding: 2px 0 8px;
+  }
+  .wi-header-fields {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 0 0 4px;
+  }
+  .wi-header-fields label {
+    grid-template-columns: 80px 1fr;
+  }
+  .wi-details {
+    padding: 12px;
+    gap: 12px;
+  }
+  .wi-main,
+  .wi-side {
+    gap: 12px;
+  }
+  .wi-section {
+    padding: 10px 12px;
+  }
+  .wi-field {
+    grid-template-columns: 120px 1fr;
+  }
+  .history {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .history-list {
+    border-right: none;
+    max-height: 40vh;
+  }
+  .links-tab {
+    padding: 12px;
+  }
+
+  /* Dialogs become sheets that fill the width */
+  .modal-backdrop {
+    padding: 8px;
+    align-items: flex-end;
+  }
+  .modal {
+    width: 100% !important;
+    max-height: calc(100dvh - 16px);
+  }
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Menus: submenus open inline instead of off the side of the screen */
+  .menu {
+    max-width: calc(100vw - 16px);
+  }
+  .submenu {
+    position: static;
+    box-shadow: none;
+    padding: 0 0 0 20px;
+    max-height: none;
+  }
+
+  /* Settings: the section list becomes a scrolling strip */
+  .page-body.settings {
+    flex-direction: column;
+  }
+  .settings-nav,
+  .settings-nav[class] {
+    width: 100%;
+    display: flex;
+    overflow-x: auto;
+    padding: 0 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    position: static;
+    scrollbar-width: none;
+  }
+  .settings-nav a {
+    font-size: 13px;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 10px 10px;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+  .settings-nav a.active {
+    border-bottom-color: var(--accent);
+    background: none;
+  }
+  .settings-content {
+    padding: 12px;
+  }
+  .settings-card {
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+  .snapshot-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toasts {
+    bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom) + 12px);
+    left: 12px;
+    right: 12px;
+    transform: none;
+  }
+  .toast {
+    max-width: none;
+  }
+  .empty-state {
+    padding: 40px 16px;
+  }
 }

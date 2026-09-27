@@ -14,7 +14,7 @@ import { useItemMenu } from '../lib/actions';
 import { draggedIds, dropPosition, endDrag, startDrag } from '../lib/dnd';
 import { EMPTY_FILTERS, isFiltering, matchesFilters, type Filters } from '../lib/filters';
 import { formatHours, formatNumber, iterationName } from '../lib/format';
-import { rollup, useChildrenMap, useItemsById, useLocalState, useSortedSprints, useToday } from '../lib/hooks';
+import { isNarrowScreen, rollup, useChildrenMap, useItemsById, useLocalState, useSortedSprints, useToday } from '../lib/hooks';
 import { useStore } from '../store';
 
 export function useLevel(): BacklogLevel | undefined {
@@ -56,6 +56,9 @@ export function LevelHeader({ view, level, children }: { view: 'backlog' | 'boar
   );
 }
 
+/** Columns still shown on phones; the rest are hidden to leave room for titles. */
+const MOBILE_COLUMNS = new Set(['Title', 'State', 'Assigned To']);
+
 interface Row {
   kind: 'context' | 'level' | 'child' | 'header' | 'add-child';
   item?: WorkItem;
@@ -79,7 +82,8 @@ const DEFAULT_VIEW: ViewOptions = {
   showInProgress: true,
   showCompletedChildren: false,
   showPlanned: true,
-  planningPane: true,
+  // Side panes crowd small screens, so they start closed there.
+  planningPane: !isNarrowScreen(),
   showPastSprints: false,
 };
 
@@ -336,7 +340,7 @@ function Backlog({ level }: { level: BacklogLevel }) {
           <Icon name="collapseAll" />
         </button>
         <button className="btn btn-ghost" onClick={(e) => menu.openAt(e, viewMenu)}>
-          View options <Icon name="chevronDown" size={12} />
+          <span className="btn-label">View options</span> <Icon name="settings" size={14} className="show-sm" /> <Icon name="chevronDown" size={12} />
         </button>
         <button className={`icon-btn ${filterOpen || isFiltering(filters) ? 'active' : ''}`} title="Filter" onClick={() => setFilterOpen(!filterOpen)}>
           <Icon name="filter" />
@@ -394,7 +398,7 @@ function Backlog({ level }: { level: BacklogLevel }) {
                 <tr>
                   <th className="col-drag" />
                   {columns.map((c) => (
-                    <th key={c} className={`col-${c.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <th key={c} className={`col-${c.toLowerCase().replace(/\s+/g, '-')} ${MOBILE_COLUMNS.has(c) ? '' : 'hide-sm'}`}>
                       {c}
                     </th>
                   ))}
@@ -478,7 +482,7 @@ function Backlog({ level }: { level: BacklogLevel }) {
                       onContextMenu={(e) => openMenu(e, w)}
                     >
                       <td className="col-drag">{row.kind !== 'context' && <Icon name="drag" size={12} />}</td>
-                      <td className="col-order muted">{row.kind === 'level' ? order.get(w.id) : ''}</td>
+                      <td className="col-order muted hide-sm">{row.kind === 'level' ? order.get(w.id) : ''}</td>
                       <td className="col-title">
                         <div className="title-cell" style={{ paddingLeft: row.depth * 20 }}>
                           {row.hasChildren ? (
@@ -528,28 +532,28 @@ function Backlog({ level }: { level: BacklogLevel }) {
                       </td>
                       {isRequirements ? (
                         <>
-                          <td className="num">{formatNumber(w.effort)}</td>
-                          <td className="num">{r.hasChildren ? formatHours(r.remaining) : formatHours(w.remainingWork)}</td>
-                          <td>
+                          <td className="num hide-sm">{formatNumber(w.effort)}</td>
+                          <td className="num hide-sm">{r.hasChildren ? formatHours(r.remaining) : formatHours(w.remainingWork)}</td>
+                          <td className="col-person">
                             <Person id={w.assignedTo} />
                           </td>
-                          <td className="muted">{iterationName(sprints, w.iterationId, projectName)}</td>
+                          <td className="muted hide-sm">{iterationName(sprints, w.iterationId, projectName)}</td>
                         </>
                       ) : (
                         <>
-                          <td>
+                          <td className="hide-sm">
                             {pct != null && (
                               <div className="mini-progress" title={`${pct}% of child items done`}>
                                 <div style={{ width: `${pct}%` }} />
                               </div>
                             )}
                           </td>
-                          <td className="num">{formatNumber(w.effort)}</td>
-                          <td className="num">{formatNumber(w.businessValue)}</td>
-                          <td>{formatShortDate(w.targetDate)}</td>
+                          <td className="num hide-sm">{formatNumber(w.effort)}</td>
+                          <td className="num hide-sm">{formatNumber(w.businessValue)}</td>
+                          <td className="hide-sm">{formatShortDate(w.targetDate)}</td>
                         </>
                       )}
-                      <td>
+                      <td className="hide-sm">
                         <Tags tags={w.tags} max={3} />
                       </td>
                       <td className="col-actions">
@@ -636,8 +640,9 @@ export function PlanningPane({
           <Icon name="add" size={12} /> New sprint
         </button>
       </div>
-      <div className="muted small pad-x">Drag items onto a sprint to plan them, or onto the backlog to unschedule them.</div>
-      {selectedIds.length > 0 && <div className="muted small pad-x">{selectedIds.length} selected — drag any selected row to move them all.</div>}
+      <div className="muted small pad-x hint-pointer">Drag items onto a sprint to plan them, or onto the backlog to unschedule them.</div>
+      <div className="muted small pad-x hint-touch">To plan an item, tap its ⋯ menu and choose Move to iteration.</div>
+      {selectedIds.length > 0 && <div className="muted small pad-x hint-pointer">{selectedIds.length} selected — drag any selected row to move them all.</div>}
       {target(
         'backlog',
         null,

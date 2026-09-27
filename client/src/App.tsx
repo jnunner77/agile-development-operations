@@ -74,10 +74,27 @@ export function App() {
           </Routes>
         </div>
       </div>
+      <BottomNav />
       <WorkItemDialogHost />
       <ConfirmHost />
       <Toasts />
     </div>
+  );
+}
+
+/** Phone navigation: a tab bar along the bottom of the screen replaces the side menu. */
+function BottomNav() {
+  const location = useLocation();
+  const items = [...NAV, { to: '/settings', icon: 'settings', label: 'Settings' }];
+  return (
+    <nav className="bottomnav" aria-label="Main">
+      {items.map((n) => (
+        <NavLink key={n.to} to={{ pathname: n.to, search: '' }} className={() => `bottomnav-link ${location.pathname.startsWith(n.to) ? 'active' : ''}`}>
+          <Icon name={n.icon} size={20} />
+          <span>{n.label}</span>
+        </NavLink>
+      ))}
+    </nav>
   );
 }
 
@@ -144,6 +161,9 @@ function TopBar() {
 
   return (
     <header className="topbar">
+      <span className="topbar-project project-badge" title={settings.projectName}>
+        {settings.projectName.slice(0, 1).toUpperCase() || 'P'}
+      </span>
       <div className="breadcrumb">
         <span>{settings.projectName}</span>
         <Icon name="chevronRight" size={12} />
