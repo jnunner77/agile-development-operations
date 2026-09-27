@@ -8,6 +8,7 @@ import { Person, Tags, useMenu } from '../components/common';
 import { FilterBar } from '../components/FilterBar';
 import { Icon, TypeIcon } from '../components/Icon';
 import { useWorkItemDialog } from '../components/WorkItemForm';
+import { ChecksIcon, PrStateBadge } from '../components/Development';
 import { useItemMenu } from '../lib/actions';
 import { draggedIds, dropPosition, endDrag, startDrag } from '../lib/dnd';
 import { EMPTY_FILTERS, isFiltering, matchesFilters, type Filters } from '../lib/filters';
@@ -256,6 +257,7 @@ function BoardCard({
           </div>
         )}
         {item.blocked && <span className="badge badge-danger">Blocked</span>}
+        <PullRequestBadges item={item} />
         <Tags tags={item.tags} max={3} />
       </div>
       {showChildren && (kids.length > 0 || childType) && (
@@ -308,6 +310,25 @@ function BoardCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Open (or most recently updated) pull requests linked to a card. */
+function PullRequestBadges({ item }: { item: WorkItem }) {
+  const prs = (item.devLinks ?? []).filter((l) => l.kind === 'pullRequest');
+  if (!prs.length) return null;
+  const shown = prs.filter((l) => l.state === 'open');
+  const list = shown.length ? shown : [...prs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 1);
+  return (
+    <div className="card-prs">
+      {list.slice(0, 3).map((l) => (
+        <a key={l.id} className="card-pr" href={l.url} target="_blank" rel="noopener noreferrer" title={`${l.repo}#${l.ref} ${l.title}`} onClick={(e) => e.stopPropagation()}>
+          <Icon name="pullRequest" size={12} /> #{l.ref}
+          <ChecksIcon checks={l.checks} />
+          <PrStateBadge link={l} />
+        </a>
+      ))}
     </div>
   );
 }

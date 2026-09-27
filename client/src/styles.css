@@ -2505,3 +2505,133 @@ tr.selected .row-more {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Development links (GitHub) ---------------------------------- */
+.dev-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.dev-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  min-width: 0;
+}
+.dev-link > .icon {
+  color: var(--text-2);
+}
+.dev-link-main {
+  flex: 1;
+  min-width: 0;
+}
+.dev-link-main a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.dev-link-main a:hover {
+  color: var(--accent-text);
+}
+.pr-state {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  white-space: nowrap;
+  color: #fff;
+}
+.pr-open {
+  background: #1f883d;
+}
+.pr-draft {
+  background: #6e7781;
+}
+.pr-merged {
+  background: #8250df;
+}
+.pr-closed {
+  background: #cf222e;
+}
+.checks {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+  flex-shrink: 0;
+}
+.checks-success {
+  background: #1f883d;
+}
+.checks-failure {
+  background: #cf222e;
+}
+.checks-pending {
+  background: #9a6700;
+}
+.card-prs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.card-pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+.card-pr:hover {
+  text-decoration: none;
+  color: var(--accent-text);
+}
+.setup-steps {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.secret-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.secret-box code {
+  word-break: break-all;
+}
+.kv {
+  margin-top: 6px;
+  border-collapse: collapse;
+}
+.kv th {
+  text-align: left;
+  padding: 4px 12px 4px 0;
+  font-weight: 600;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.kv td {
+  padding: 4px 0;
+}
+.kv code,
+.dev-link code,
+.wi-section code,
+.setup-steps code {
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 12px;
+}

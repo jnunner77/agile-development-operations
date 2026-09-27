@@ -122,6 +122,19 @@ Off by default, so the app works as before with a "who am I" picker. To turn it 
 Use HTTPS (for example behind a reverse proxy) if the app is reachable beyond your own machine;
 otherwise passwords travel over the network unencrypted.
 
+### Development links (GitHub)
+- Connect a GitHub repository in **Project settings → Integrations** (administrators): create a
+  webhook secret, then add the webhook in GitHub using the URL and events shown on that page.
+- Branches named `wi/123-short-title`, and commits or pull requests that mention `AB#123`,
+  appear in work item 123's **Development** section with their status (open, merged, closed,
+  deleted) and CI result. Every commit pushed to a `wi/123-…` branch is linked.
+- Optional automation: opening a pull request moves linked backlog items to *Committed* and
+  tasks to *In Progress*; merging into the default branch moves them to *Done*. Work never moves
+  backwards, drafts don't move anything, and epics and features are never moved.
+- Board cards show linked pull requests with their status and checks.
+- Deliveries are verified with the webhook secret (HMAC-SHA256); unsigned or tampered requests
+  are rejected. The secret is stored outside the database and never sent to browsers or backups.
+
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,
   capacity, team, settings). Restore, rename, download or delete.

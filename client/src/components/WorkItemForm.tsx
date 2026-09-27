@@ -24,6 +24,7 @@ import { Avatar, StateBadge, confirmDialog, useMenu } from './common';
 import { Icon, TypeIcon } from './Icon';
 import { MemberSelect, NumberInput, TagsInput, WorkItemPicker } from './inputs';
 import { RichTextEditor, RichView } from './RichText';
+import { DevelopmentSection } from './Development';
 
 type Draft = WorkItemFields;
 
@@ -481,6 +482,7 @@ function DetailsTab({ type, item, get, set }: { type: WorkItemType; item?: WorkI
           </Section>
         )}
         <RelatedWork type={type} item={item} get={get} set={set} />
+        {item && <DevelopmentSection item={item} />}
         {item && <InfoSection item={item} />}
       </div>
     </div>
