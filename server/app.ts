@@ -10,6 +10,7 @@ import { buildDemoDatabase } from './seed';
 import * as wi from './workitems';
 import * as team from './team';
 import { AuthManager } from './auth';
+import { Security, retryAfterOf, securityHeaders } from './security';
 
 export interface AppOptions {
   store: Store;
@@ -22,7 +23,13 @@ export interface AppOptions {
    * so the app sees the original HTTPS scheme and marks sign-in cookies as Secure.
    */
   trustProxy?: boolean | number | string;
+  /** Rate limits and abuse protection; pass false to turn them off (tests). */
+  security?: Security | false;
 }
+
+/** Largest JSON body accepted, except for importing a backup (admins only). */
+const JSON_LIMIT = '2mb';
+const IMPORT_LIMIT = '50mb';
 
 /** Resolve the display name of the caller from the X-User header (a member id or a name). */
 function userName(store: Store, req: Request): string {
@@ -38,21 +45,44 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy }: AppOptions) {
+export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy, security = new Security() }: AppOptions) {
   const app = express();
   app.disable('x-powered-by');
   if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
-  app.use(express.json({ limit: '100mb' }));
+  app.use(securityHeaders);
+  if (security) app.use(security.firewall);
+  // Small bodies everywhere; the backup import route parses its own larger body, but only
+  // after the caller has been checked as an administrator.
+  const smallJson = express.json({ limit: JSON_LIMIT });
+  app.use((req, res, next) => (req.path === '/api/backup/import' ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
   const admin = auth.requireAdmin;
+  const pass = (_req: Request, _res: Response, next: NextFunction) => next();
+  const heavy = security ? security.heavy : pass;
+
+  api.use((_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   // Liveness check for load balancers and container health checks; public and data-free.
   api.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
-  // Must come first: with sign-in on, everything below needs a valid session.
+  if (security) {
+    api.use(security.sameOrigin);
+    // Identify the caller first so limits apply per person, and to anonymous callers
+    // before sign-in turns them away.
+    api.use((req, res, next) => {
+      auth.identify(req, res);
+      next();
+    });
+    api.use(security.apiLimits(() => auth.enabled));
+    api.use(['/auth/login', '/auth/password'], security.signIn);
+  }
+  // With sign-in on, everything below needs a valid session.
   api.use(auth.authenticate);
   api.use('/auth', auth.routes());
 
@@ -70,6 +100,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
 
   // Server-sent events: every committed change is pushed to connected browsers.
   api.get('/events', (req, res) => {
+    const release = security ? security.openStream(req, res) : () => {};
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -83,6 +114,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     const stop = () => {
       clearInterval(heartbeat);
       unsubscribe();
+      release();
       res.end();
     };
     const unsubscribe = store.subscribe((delta, origin) => {
@@ -93,6 +125,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     req.on('close', () => {
       clearInterval(heartbeat);
       unsubscribe();
+      release();
     });
   });
 
@@ -223,7 +256,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
   api.get('/snapshots', (_req, res) => {
     res.json(snapshots.list());
   });
-  api.post('/snapshots', (req, res) => {
+  api.post('/snapshots', heavy, (req, res) => {
     const input = snapshotInput.parse(req.body ?? {});
     res.status(201).json(snapshots.create(input.name ?? '', input.description ?? '', 'manual', userName(store, req)));
   });
@@ -234,16 +267,16 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     snapshots.delete(String(req.params.id));
     res.status(204).end();
   });
-  api.post('/snapshots/:id/restore', admin, (req, res) => {
+  api.post('/snapshots/:id/restore', admin, heavy, (req, res) => {
     const safety = snapshots.restore(String(req.params.id), userName(store, req), req.header('x-client-id'));
     res.json({ safetySnapshot: safety });
   });
-  api.get('/snapshots/:id/download', (req, res) => {
+  api.get('/snapshots/:id/download', heavy, (req, res) => {
     const file = snapshots.filePath(String(req.params.id));
     res.download(file, `snapshot-${req.params.id}.json`);
   });
 
-  api.get('/backup/export', (req, res) => {
+  api.get('/backup/export', heavy, (req, res) => {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     const slug = store.db.settings.projectName.replace(/[^\w-]+/g, '-').toLowerCase();
     res.setHeader('Content-Disposition', `attachment; filename="${slug}-backup-${stamp}.json"`);
@@ -254,7 +287,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
       data: store.db,
     });
   });
-  api.post('/backup/import', admin, (req, res) => {
+  api.post('/backup/import', admin, heavy, express.json({ limit: IMPORT_LIMIT }), (req, res) => {
     try {
       const safety = snapshots.import(req.body, userName(store, req), req.header('x-client-id'));
       res.json({ safetySnapshot: safety });
@@ -263,7 +296,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
       throw badRequest(err instanceof Error ? err.message : 'Invalid backup file');
     }
   });
-  api.post('/backup/reset', admin, (req, res) => {
+  api.post('/backup/reset', admin, heavy, (req, res) => {
     const { mode } = z.object({ mode: z.enum(['empty', 'demo']) }).parse(req.body);
     const settings = { ...store.db.settings };
     const next = mode === 'demo' ? buildDemoDatabase() : emptyDatabase({ projectName: settings.projectName, teamName: settings.teamName, backup: settings.backup, workingDays: settings.workingDays, areaPaths: settings.areaPaths });
@@ -290,7 +323,11 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
       const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
       return res.status(400).json({ error: `${where}${issue?.message ?? 'Invalid request'}` });
     }
-    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof HttpError) {
+      const retryAfter = retryAfterOf(err);
+      if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
+      return res.status(err.status).json({ error: err.message });
+    }
     if (err instanceof SyntaxError && 'body' in (err as object)) return res.status(400).json({ error: 'Malformed JSON' });
     if ((err as { type?: string })?.type === 'entity.too.large') return res.status(413).json({ error: 'Request is too large' });
     console.error(err);

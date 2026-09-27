@@ -32,13 +32,16 @@ Start empty instead with `SEED=empty npm start`, or use **Project settings → S
 | `DATA_DIR` | `./data` | Where the database and snapshots are stored |
 | `SEED` | `demo` | `demo` or `empty` — data created when no database exists yet |
 | `AUTH_DISABLED` | _(unset)_ | Set to `1` to force sign-in off (recovery if every administrator is locked out) |
+| `SECURITY_ALLOWLIST` | _(unset)_ | Comma-separated IPs or IPv4 ranges never rate limited or blocked (e.g. an office's shared address) |
 | `TRUST_PROXY` | _(unset)_ | Set when running behind a reverse proxy (e.g. `1` for one hop) so HTTPS is detected and sign-in cookies are marked Secure |
 
 ## Deploying
 
 The repository includes a Dockerfile and a `docker-compose.yml` that runs the app behind Caddy
 with automatic HTTPS. [`deploy/README.md`](deploy/README.md) walks through hosting it for free on a
-Google Cloud e2-micro VM with a DuckDNS host name, plus upgrades, backups and troubleshooting.
+Google Cloud e2-micro VM with a DuckDNS host name, plus upgrades, backups and troubleshooting,
+and describes the built-in protections (rate limits, temporary blocks, security headers,
+hardened containers) in its *Security* section.
 
 ```bash
 cp deploy/.env.example .env    # set DOMAIN

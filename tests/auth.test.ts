@@ -22,7 +22,8 @@ beforeEach(() => {
   store = new Store(dir, () => emptyDatabase());
   clock = Date.parse('2026-01-01T09:00:00Z');
   auth = new AuthManager(store, { now: () => clock });
-  app = createApp({ store, snapshots: new SnapshotManager(store), auth });
+  // Rate limits are covered in security.test.ts; these tests make many attempts from one IP.
+  app = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
 });
 
 afterEach(() => {
