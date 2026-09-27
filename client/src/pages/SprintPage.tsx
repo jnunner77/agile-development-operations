@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { formatDayMonth, formatShortDate } from '../../../shared/dates';
-import { isClosed } from '../../../shared/process';
+import { BACKLOG_LEVELS, isClosed } from '../../../shared/process';
 import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, sprintTimeframe } from '../../../shared/sprints';
 import type { Sprint, SprintCapacity } from '../../../shared/types';
 import { api } from '../api';
@@ -11,6 +11,7 @@ import { SprintDialog } from '../components/SprintDialog';
 import { formatHours } from '../lib/format';
 import { useLocalState, useMembersById, useSortedSprints, useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';
+import { PlanningPane } from './BacklogPage';
 import { Analytics } from './sprint/Analytics';
 import { CapacityView } from './sprint/Capacity';
 import { SprintBacklog } from './sprint/SprintBacklog';
@@ -66,7 +67,9 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
   const menu = useMenu();
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [showDetails, setShowDetails] = useLocalState('sprint.workDetails', { open: true });
+  // One side pane at a time: planning (drag work to other sprints) or work details.
+  const [side, setSide] = useLocalState<{ pane: 'planning' | 'details' | 'none' }>('sprint.sidePane', { pane: 'details' });
+  const [showPastSprints, setShowPastSprints] = useState(false);
   const [previewCapacity, setPreviewCapacity] = useState<SprintCapacity | null>(null);
   const tf = sprintTimeframe(sprint, today);
   const summary = computeCapacity(sprint, capacity, workingDays, today);
@@ -117,7 +120,10 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
     navigate('/sprints');
   };
 
-  const detailsVisible = showDetails.open && view !== 'analytics';
+  const planningAvailable = view === 'taskboard' || view === 'backlog';
+  const planningVisible = side.pane === 'planning' && planningAvailable;
+  const detailsVisible = side.pane === 'details' && view !== 'analytics';
+  const togglePane = (pane: 'planning' | 'details') => setSide({ pane: side.pane === pane ? 'none' : pane });
 
   return (
     <div className="page">
@@ -175,8 +181,13 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
             ))}
           </div>
           <div className="spacer" />
+          {planningAvailable && (
+            <button className={`btn btn-ghost ${planningVisible ? 'active' : ''}`} onClick={() => togglePane('planning')} title="Drag items onto another sprint or the backlog">
+              <Icon name="sprint" size={14} /> Planning
+            </button>
+          )}
           {view !== 'analytics' && (
-            <button className={`btn btn-ghost ${showDetails.open ? 'active' : ''}`} onClick={() => setShowDetails({ open: !showDetails.open })}>
+            <button className={`btn btn-ghost ${detailsVisible ? 'active' : ''}`} onClick={() => togglePane('details')}>
               <Icon name="pane" size={14} /> Work details
             </button>
           )}
@@ -189,6 +200,14 @@ function SprintShell({ sprint, view }: { sprint: Sprint; view: (typeof VIEWS)[nu
           {view === 'capacity' && <CapacityView sprint={sprint} onPreview={setPreviewCapacity} />}
           {view === 'analytics' && <Analytics sprint={sprint} />}
         </div>
+        {planningVisible && (
+          <PlanningPane
+            level={BACKLOG_LEVELS.find((l) => l.key === 'requirements')!}
+            showPast={showPastSprints}
+            onTogglePast={() => setShowPastSprints(!showPastSprints)}
+            viewingSprintId={sprint.id}
+          />
+        )}
         {detailsVisible && <WorkDetails sprint={sprint} capacity={(view === 'capacity' && previewCapacity) || capacity} />}
       </div>
       {editing && <SprintDialog sprint={sprint} onClose={() => setEditing(false)} />}

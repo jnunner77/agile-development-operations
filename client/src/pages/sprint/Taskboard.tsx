@@ -158,7 +158,13 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                     <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} />
                   </button>
                   {lane.parent ? (
-                    <div className="tb-parent-card" style={{ borderLeftColor: TYPE_DEFS[lane.parent.type].color }} onContextMenu={(e) => menu.openAt(e, itemMenu.build([lane.parent!], { sprint }))}>
+                    <div
+                      className="tb-parent-card"
+                      style={{ borderLeftColor: TYPE_DEFS[lane.parent.type].color }}
+                      draggable
+                      onDragStart={(e) => startDrag(e, [lane.parent!.id])}
+                      onDragEnd={endDrag}
+                      onContextMenu={(e) => menu.openAt(e, itemMenu.build([lane.parent!], { sprint }))}>
                       <div className="card-top">
                         <TypeIcon type={lane.parent.type} size={14} />
                         <span className="card-id">{lane.parent.id}</span>

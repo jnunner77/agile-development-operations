@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { stateDef, type WorkItemType } from '../../../shared/process';
 import type { Member } from '../../../shared/types';
 import { initials } from '../lib/format';
@@ -182,7 +182,8 @@ export interface MenuItem {
 export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: number; y: number; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
-  const [open, setOpen] = useState<number | null>(null);
+  // Which item's submenu is open, and where that item is on screen.
+  const [open, setOpen] = useState<{ idx: number; anchor: DOMRect } | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -215,13 +216,19 @@ export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: numb
         item.divider ? (
           <div key={idx} className="menu-divider" />
         ) : (
-          <div key={idx} className="menu-item-wrap" onMouseEnter={() => setOpen(item.submenu ? idx : null)}>
+          <div
+            key={idx}
+            className="menu-item-wrap"
+            onMouseEnter={(e) => setOpen(item.submenu && !item.disabled ? { idx, anchor: e.currentTarget.getBoundingClientRect() } : null)}
+          >
             <button
-              className={`menu-item ${item.danger ? 'danger' : ''}`}
+              className={`menu-item ${item.danger ? 'danger' : ''} ${open?.idx === idx ? 'open' : ''}`}
               disabled={item.disabled}
               role="menuitem"
-              onClick={() => {
-                if (item.submenu) return setOpen(idx);
+              aria-haspopup={item.submenu ? 'menu' : undefined}
+              aria-expanded={item.submenu ? open?.idx === idx : undefined}
+              onClick={(e) => {
+                if (item.submenu) return setOpen({ idx, anchor: (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect() });
                 item.onClick?.();
                 onClose();
               }}
@@ -230,30 +237,48 @@ export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: numb
               <span className="menu-label">{item.label}</span>
               {item.submenu && <Icon name="chevronRight" size={12} />}
             </button>
-            {item.submenu && open === idx && (
-              <div className="menu submenu" role="menu">
-                {item.submenu.map((sub, j) =>
-                  sub.divider ? (
-                    <div key={j} className="menu-divider" />
-                  ) : (
-                    <button
-                      key={j}
-                      className="menu-item"
-                      role="menuitem"
-                      disabled={sub.disabled}
-                      onClick={() => {
-                        sub.onClick?.();
-                        onClose();
-                      }}
-                    >
-                      <span className="menu-icon">{sub.checked ? <Icon name="check" size={14} /> : sub.icon ? <Icon name={sub.icon} size={14} /> : null}</span>
-                      <span className="menu-label">{sub.label}</span>
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
+            {item.submenu && open?.idx === idx && <Submenu items={item.submenu} anchor={open.anchor} onClose={onClose} />}
           </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+/**
+ * A submenu floats beside its parent item. It is positioned on screen rather than inside the
+ * parent menu, which scrolls and would otherwise clip it; it flips left when there's no room.
+ */
+function Submenu({ items, anchor, onClose }: { items: MenuItem[]; anchor: DOMRect; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = anchor.right + r.width <= window.innerWidth - 8 ? anchor.right - 2 : Math.max(4, anchor.left - r.width + 2);
+    const y = Math.max(4, Math.min(anchor.top - 4, window.innerHeight - r.height - 8));
+    setPos({ x, y });
+  }, [anchor]);
+  return (
+    <div ref={ref} className="menu submenu" role="menu" style={{ left: pos?.x ?? anchor.right, top: pos?.y ?? anchor.top, visibility: pos ? 'visible' : 'hidden' }}>
+      {items.map((sub, j) =>
+        sub.divider ? (
+          <div key={j} className="menu-divider" />
+        ) : (
+          <button
+            key={j}
+            className="menu-item"
+            role="menuitem"
+            disabled={sub.disabled}
+            onClick={() => {
+              sub.onClick?.();
+              onClose();
+            }}
+          >
+            <span className="menu-icon">{sub.checked ? <Icon name="check" size={14} /> : sub.icon ? <Icon name={sub.icon} size={14} /> : null}</span>
+            <span className="menu-label">{sub.label}</span>
+          </button>
         ),
       )}
     </div>

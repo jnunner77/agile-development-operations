@@ -986,6 +986,9 @@ tr.selected .row-more {
 .plan-target.past {
   opacity: 0.75;
 }
+.plan-target.viewing {
+  background: var(--surface-2);
+}
 .plan-name {
   display: flex;
   align-items: center;
@@ -1018,10 +1021,12 @@ tr.selected .row-more {
   position: relative;
 }
 .submenu {
-  position: absolute;
-  left: 100%;
-  top: -4px;
+  /* Fixed on screen (from .menu) and placed by script beside the parent item. */
   max-height: 60vh;
+  z-index: 1001;
+}
+.menu-item.open {
+  background: var(--hover);
 }
 .menu-item {
   display: flex;

@@ -572,7 +572,20 @@ function Backlog({ level }: { level: BacklogLevel }) {
   );
 }
 
-function PlanningPane({ level, showPast, onTogglePast, selectedIds }: { level: BacklogLevel; showPast: boolean; onTogglePast: () => void; selectedIds: number[] }) {
+/** Drop targets for the backlog and each sprint. Also used on the sprint page, where `viewingSprintId` marks the sprint on screen. */
+export function PlanningPane({
+  level,
+  showPast,
+  onTogglePast,
+  selectedIds = [],
+  viewingSprintId,
+}: {
+  level: BacklogLevel;
+  showPast: boolean;
+  onTogglePast: () => void;
+  selectedIds?: number[];
+  viewingSprintId?: string;
+}) {
   const sprints = useSortedSprints();
   const items = useStore((s) => s.workItems);
   const projectName = useStore((s) => s.settings.projectName);
@@ -595,7 +608,7 @@ function PlanningPane({ level, showPast, onTogglePast, selectedIds }: { level: B
     if (ids.length) await itemMenu.moveTo(ids, iterationId);
   };
 
-  const visible = sprints.filter((s) => showPast || sprintTimeframe(s, today) !== 'past');
+  const visible = sprints.filter((s) => showPast || sprintTimeframe(s, today) !== 'past' || s.id === viewingSprintId);
   const pastCount = sprints.length - sprints.filter((s) => sprintTimeframe(s, today) !== 'past').length;
 
   const target = (key: string, iterationId: string | null, content: ReactNode, className = '') => (
@@ -655,13 +668,14 @@ function PlanningPane({ level, showPast, onTogglePast, selectedIds }: { level: B
               <Link to={`/sprints/${s.id}/backlog`}>{s.name}</Link>
               {tf === 'current' && <span className="badge badge-current">Current</span>}
               {tf === 'past' && <span className="badge">Past</span>}
+              {s.id === viewingSprintId && <span className="badge">Viewing</span>}
             </div>
             <div className="muted small">{s.startDate ? `${formatDayMonth(s.startDate)} – ${formatShortDate(s.finishDate)} · ${days} working days` : 'No dates'}</div>
             <div className="small">
               {st.count} items · {formatNumber(st.effort)} effort
             </div>
           </>,
-          `plan-sprint ${tf}`,
+          `plan-sprint ${tf} ${s.id === viewingSprintId ? 'viewing' : ''}`,
         );
       })}
       {creating && <SprintDialog onClose={() => setCreating(false)} />}

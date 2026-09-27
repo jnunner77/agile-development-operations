@@ -72,6 +72,8 @@ Start empty instead with `SEED=empty npm start`, or use **Project settings → S
 - **Move work out of a sprint**: any item's menu (right-click or `…`) on the taskboard or sprint
   backlog has **Move to next sprint** and **Move to backlog**; the sprint's `…` menu moves *all*
   unfinished work at once. Open tasks travel with their backlog item; finished work stays put.
+- **Planning pane** on the taskboard and sprint backlog: drag a backlog item (or task) onto another
+  sprint or the backlog.
 - **Capacity**: per member activities & hours per day, **personal days off** and **team days off**
   (date ranges), copy from a previous sprint. Working days are configurable.
 - **Work details** panel: remaining work vs. remaining capacity for the team, per activity and per person.
