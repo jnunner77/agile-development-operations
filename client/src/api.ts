@@ -13,7 +13,7 @@ import type {
   Hyperlink,
 } from '../../shared/types';
 import type { LinkType, WorkItemType } from '../../shared/process';
-import type { AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
+import type { ApiTokenInfo, ApiTokenScope, AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
 import type { GitHubAdminView, GitHubSettings } from '../../shared/integrations';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 
@@ -211,4 +211,11 @@ export const githubApi = {
   get: () => request<GitHubAdminView>('GET', '/integrations/github'),
   update: (patch: Partial<GitHubSettings>) => request<GitHubAdminView>('PUT', '/integrations/github', patch),
   rotateSecret: () => request<{ secret: string; view: GitHubAdminView }>('POST', '/integrations/github/secret'),
+};
+
+export const tokensApi = {
+  list: () => request<ApiTokenInfo[]>('GET', '/auth/tokens'),
+  create: (input: { name: string; memberId?: string; scope: ApiTokenScope; expiresInDays: number }) =>
+    request<{ token: string; info: ApiTokenInfo }>('POST', '/auth/tokens', input),
+  revoke: (id: string) => request<void>('DELETE', `/auth/tokens/${id}`),
 };

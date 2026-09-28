@@ -27,6 +27,17 @@ When a change is for a work item (e.g. #123, "Offline indicator banner"):
   Progress; merging into `main` moves them to Done. Use a draft pull request if the work
   isn't ready to move yet.
 
+## Managing work items through the API
+
+When the session has `BOARDS_URL` and `BOARDS_TOKEN` environment variables, you can read and
+change the team's work items directly (create PBIs, tasks and bugs, move them between
+sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` examples.
+
+- Send the token as `Authorization: Bearer $BOARDS_TOKEN`. Never print it, log it, commit it
+  or put it in a URL.
+- Tokens can't change sign-in, team members, settings, integrations or backups; ask a person.
+- Link code to the items you work on as described above, so pull requests move them along.
+
 ## Code conventions
 
 - TypeScript everywhere; keep `shared/` free of Node- and browser-specific code.

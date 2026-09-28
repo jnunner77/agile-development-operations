@@ -70,3 +70,20 @@ export interface AuthAdminView {
   overridden: boolean;
   accounts: AccountSummary[];
 }
+
+export type ApiTokenScope = 'read' | 'write';
+
+/** An API token as shown in settings. The secret itself is only returned once, when created. */
+export interface ApiTokenInfo {
+  id: string;
+  name: string;
+  memberId: string;
+  scope: ApiTokenScope;
+  /** Start of the token, so people can tell tokens apart. */
+  prefix: string;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  expired: boolean;
+}

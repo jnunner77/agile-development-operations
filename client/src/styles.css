@@ -3104,3 +3104,12 @@ tr.selected .row-more {
     padding: 40px 16px;
   }
 }
+
+.token-created {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 12px;
+}
+.token-form {
+  max-width: 640px;
+}
