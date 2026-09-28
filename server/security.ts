@@ -287,7 +287,7 @@ export class Security {
     if (path === '/api/health') return next();
     this.check(this.ipBucket, ip, ip);
     res.on('finish', () => {
-      if (res.statusCode === 401 && SIGN_IN_PATHS.has(path)) this.count(this.authFailures, ip, this.options.ban.authFailures, 'too many failed sign-in attempts');
+      if (res.statusCode === 401 && (SIGN_IN_PATHS.has(path) || res.locals.invalidToken)) this.count(this.authFailures, ip, this.options.ban.authFailures, 'too many failed sign-in attempts');
       else if (res.statusCode === 404 && path.startsWith('/api/')) this.count(this.notFounds, ip, this.options.ban.notFound, 'probing for API endpoints');
     });
     next();

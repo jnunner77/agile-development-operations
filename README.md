@@ -144,6 +144,13 @@ otherwise passwords travel over the network unencrypted.
   Change state, Change parent and Assign to.
 - Side panes (Planning, Work details) open under the content on small screens and start closed.
 
+### API tokens
+- **Project settings → API tokens** creates tokens for scripts and assistants (such as Claude).
+  A token acts as one team member, is read-only or read & write, expires (up to a year) and
+  can be revoked. Only a hash is stored, outside the database, snapshots and backups.
+- Use it as `Authorization: Bearer <token>`. Tokens can't administer the project or create
+  more tokens. See [`docs/api.md`](docs/api.md) for the endpoints.
+
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,
   capacity, team, settings). Restore, rename, download or delete.

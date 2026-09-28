@@ -9,6 +9,7 @@ import { Icon, TypeIcon } from '../components/Icon';
 import { SprintDialog } from '../components/SprintDialog';
 import { SecuritySettings } from './SecuritySettings';
 import { IntegrationsSettings } from './IntegrationsSettings';
+import { ApiTokensSettings } from './ApiTokensSettings';
 import { formatBytes, formatDateTime, timeAgo } from '../lib/format';
 import { useSortedSprints, useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'recycle-bin', label: 'Recycle bin', icon: 'trash' },
   { key: 'authentication', label: 'Authentication', icon: 'lock', adminOnly: true },
   { key: 'integrations', label: 'Integrations', icon: 'github', adminOnly: true },
+  { key: 'api-tokens', label: 'API tokens', icon: 'lock' },
 ];
 
 /** With sign-in on, only administrators can change project settings. */
@@ -51,7 +53,7 @@ export function SettingsPage() {
           ))}
         </nav>
         <div className="settings-content">
-          {!canAdminister && (
+          {!canAdminister && tab !== 'api-tokens' && (
             <div className="callout">
               <Icon name="lock" size={14} /> Only administrators can change project settings.
             </div>
@@ -63,6 +65,7 @@ export function SettingsPage() {
           {tab === 'recycle-bin' && <RecycleBin />}
           {tab === 'authentication' && <SecuritySettings />}
           {tab === 'integrations' && <IntegrationsSettings />}
+          {tab === 'api-tokens' && <ApiTokensSettings />}
         </div>
       </div>
     </div>

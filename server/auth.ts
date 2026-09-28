@@ -14,12 +14,14 @@ import {
   type AuthAdminView,
   type AuthSettings,
   type AuthStatus,
+  type ApiTokenInfo,
   type AuthUser,
   type LoginResult,
 } from '../shared/auth';
 import type { Database, Member } from '../shared/types';
 import { HttpError, badRequest, notFound } from './errors';
 import type { Store } from './store';
+import { TokenManager, createTokenSchema, tokenForbidden } from './tokens';
 
 // ---- Password hashing -----------------------------------------------------------
 // Passwords are never stored or recoverable. Each one is run through scrypt (a slow,
@@ -113,6 +115,8 @@ export class AuthManager {
   private readonly failures = new Map<string, { count: number; lockedUntil: number }>();
   readonly overridden: boolean;
   private readonly now: () => number;
+  /** API tokens for scripts and assistants. */
+  readonly tokens: TokenManager;
 
   constructor(
     private readonly store: Store,
@@ -121,6 +125,7 @@ export class AuthManager {
     this.file = path.join(store.dataDir, 'auth.json');
     this.overridden = !!opts.disabled;
     this.now = opts.now ?? Date.now;
+    this.tokens = new TokenManager(store, this.now);
     this.data = { settings: { ...DEFAULT_AUTH_SETTINGS }, accounts: {} };
     if (fs.existsSync(this.file)) {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<AuthFile>;
@@ -411,6 +416,15 @@ export class AuthManager {
    */
   authenticate = (req: Request, res: Response, next: NextFunction) => {
     const member = this.identify(req, res);
+    if (res.locals.invalidToken) return res.status(401).json({ error: 'Invalid or expired API token', code: 'token' });
+    const token = res.locals.apiToken as ApiTokenInfo | undefined;
+    if (token && member) {
+      // Token callers act as the token's member, whether or not sign-in is on.
+      if (token.scope === 'read' && MUTATING.has(req.method)) return res.status(403).json({ error: 'This API token is read-only' });
+      if (req.path.startsWith('/auth/') && req.path !== '/auth/status') throw tokenForbidden('manage sign-in or tokens');
+      req.headers['x-user'] = encodeURIComponent(member.id);
+      return next();
+    }
     if (!this.enabled) return next();
     if (member) req.headers['x-user'] = encodeURIComponent(member.id);
     else delete req.headers['x-user'];
@@ -425,6 +439,14 @@ export class AuthManager {
    */
   identify = (req: Request, res: Response): Member | null => {
     if (res.locals.authMember !== undefined) return res.locals.authMember as Member | null;
+    const bearer = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') ?? '')?.[1];
+    if (bearer) {
+      const found = this.tokens.verify(bearer);
+      res.locals.authMember = found?.member ?? null;
+      res.locals.apiToken = found?.token;
+      res.locals.invalidToken = !found;
+      return found?.member ?? null;
+    }
     const token = readCookie(req, SESSION_COOKIE);
     const member = token ? this.resolve(token) : null;
     res.locals.authMember = member;
@@ -434,6 +456,7 @@ export class AuthManager {
 
   /** Restrict a route to administrators while sign-in is on. With sign-in off anyone may use it. */
   requireAdmin = (_req: Request, res: Response, next: NextFunction) => {
+    if (res.locals.apiToken) throw tokenForbidden('administer the project');
     if (this.enabled && !this.isAdmin(res.locals.authMember ?? null)) throw new HttpError(403, 'Only administrators can do this');
     next();
   };
@@ -477,6 +500,33 @@ export class AuthManager {
       await this.setPasswordFor(String(req.params.memberId), input.password, input.mustChange);
       res.json(this.adminView());
     });
+    // ---- API tokens (people manage their own; administrators manage everyone's) ----
+    const tokenCaller = (res: Response) => {
+      const member = (res.locals.authMember ?? null) as Member | null;
+      return { member, manageAll: !this.enabled || this.isAdmin(member) };
+    };
+    r.get('/tokens', (_req, res) => {
+      const { member, manageAll } = tokenCaller(res);
+      res.json(manageAll ? this.tokens.list() : this.tokens.list(member!.id));
+    });
+    r.post('/tokens', (req, res) => {
+      const input = createTokenSchema.parse(req.body);
+      const { member, manageAll } = tokenCaller(res);
+      const memberId = input.memberId ?? member?.id;
+      if (!memberId) throw badRequest('Choose the team member the token acts as');
+      if (!manageAll && memberId !== member?.id) throw new HttpError(403, 'Only administrators can create tokens for someone else');
+      // With sign-in off there is no session; fall back to the "acting as" member, if any.
+      const acting = this.store.db.members.find((m) => encodeURIComponent(m.id) === req.get('x-user'));
+      const creator = member?.name ?? acting?.name ?? 'Anonymous';
+      res.status(201).json(this.tokens.create(input, memberId, creator));
+    });
+    r.delete('/tokens/:id', (req, res) => {
+      const { member, manageAll } = tokenCaller(res);
+      const token = this.tokens.get(String(req.params.id));
+      if (!manageAll && token.memberId !== member?.id) throw new HttpError(403, "Only administrators can revoke someone else's token");
+      this.tokens.revoke(token.id);
+      res.status(204).end();
+    });
     r.post('/accounts/:memberId/reset', this.requireAdmin, (req, res) => {
       this.resetPassword(String(req.params.memberId));
       res.json(this.adminView());
@@ -484,6 +534,8 @@ export class AuthManager {
     return r;
   }
 }
+
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const PUBLIC_PATHS = new Set(['/auth/status', '/auth/login', '/auth/password', '/auth/logout']);
 
