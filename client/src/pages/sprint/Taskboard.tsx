@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { TASK_COLUMNS, TYPE_DEFS } from '../../../../shared/process';
 import type { Sprint, WorkItem } from '../../../../shared/types';
 import { api } from '../../api';
-import { Avatar, EmptyState, Person, StateBadge, useMenu } from '../../components/common';
+import { AssigneePicker, Avatar, EmptyState, StateBadge, useMenu } from '../../components/common';
 import { Icon, TypeIcon } from '../../components/Icon';
 import { useWorkItemDialog } from '../../components/WorkItemForm';
 import { useItemMenu } from '../../lib/actions';
@@ -177,7 +177,7 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                       </div>
                       {!isCollapsed && (
                         <div className="card-fields">
-                          <Person id={lane.parent.assignedTo} size={18} />
+                          <AssigneePicker item={lane.parent} />
                           <select
                             className="state-select"
                             value={lane.parent.state}
@@ -306,9 +306,7 @@ function TaskCard({
 }) {
   const { open } = useWorkItemDialog();
   const itemsById = useItemsById();
-  const members = useStore((s) => s.members);
   const [editingHours, setEditingHours] = useState(false);
-  const menu = useMenu();
   const parent = task.parentId != null ? itemsById.get(task.parentId) : undefined;
   return (
     <div
@@ -335,17 +333,7 @@ function TaskCard({
         </div>
       )}
       <div className="task-card-footer">
-        <button
-          className="person-btn"
-          onClick={(e) =>
-            menu.openAt(e, [
-              { label: 'Unassigned', checked: !task.assignedTo, onClick: () => api.updateWorkItem(task.id, { assignedTo: null }) },
-              ...members.filter((m) => m.active).map((m) => ({ label: m.name, checked: task.assignedTo === m.id, onClick: () => api.updateWorkItem(task.id, { assignedTo: m.id }) })),
-            ])
-          }
-        >
-          <Person id={task.assignedTo} size={18} />
-        </button>
+        <AssigneePicker item={task} />
         <span className="task-activity muted small">{task.activity}</span>
         {task.blocked && <span className="badge badge-danger">Blocked</span>}
         {editingHours ? (
@@ -373,7 +361,6 @@ function TaskCard({
           </button>
         )}
       </div>
-      {menu.element}
     </div>
   );
 }

@@ -90,6 +90,36 @@ await card.dragTo(lane.locator('.tb-cell').nth(1));
 await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === 'Test profile editing').state, 'In Progress');
 
+step('taskboard: change who a backlog item and a task are assigned to, right on the card');
+const people = (await db()).members.filter((m) => m.active);
+const parentCard = page.locator('.tb-parent-card', { hasText: 'Edit profile details' });
+const parentId = (await db()).workItems.find((w) => w.title === 'Edit profile details').id;
+const parentOwner = (await db()).workItems.find((w) => w.id === parentId).assignedTo;
+const newOwner = people.find((m) => m.id !== parentOwner);
+await parentCard.locator('.person-btn').click();
+await page.locator('.menu .menu-item', { hasText: newOwner.name }).click();
+await page.waitForTimeout(400);
+assert.equal((await db()).workItems.find((w) => w.id === parentId).assignedTo, newOwner.id);
+assert.equal(await page.locator('.wi-form').count(), 0, 'the item did not open');
+await parentCard.locator('.person-name', { hasText: newOwner.name }).waitFor();
+// By keyboard on a task card: Enter opens the list on the current assignee, End moves to the
+// last member, Enter picks it; Esc closes and gives focus back to the button.
+const taskBtn = card.locator('.person-btn');
+await taskBtn.focus();
+await page.keyboard.press('Enter');
+await page.locator('.menu').waitFor();
+assert.ok(await page.evaluate(() => !!document.activeElement?.closest('.menu')), 'menu has focus');
+await page.keyboard.press('End');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+assert.equal((await db()).workItems.find((w) => w.title === 'Test profile editing').assignedTo, people[people.length - 1].id);
+await taskBtn.focus();
+await page.keyboard.press('Enter');
+await page.locator('.menu').waitFor();
+await page.keyboard.press('Escape');
+await page.locator('.menu').waitFor({ state: 'detached' });
+assert.ok(await taskBtn.evaluate((el) => el === document.activeElement), 'focus back on the assignee');
+
 step('capacity: add days off and save');
 await page.goto(`${base}/sprints/${current.id}/capacity`);
 const alexRow = page.locator('.capacity-grid tr', { hasText: 'Alex Johnson' });
@@ -110,6 +140,14 @@ await page.goto(base + '/boards/requirements');
 await page.locator('.card', { hasText: 'Dark mode for the portal' }).dragTo(page.locator('.board-column', { hasText: 'Approved' }).locator('.board-column-body'));
 await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === 'Dark mode for the portal').state, 'Approved');
+
+step('board: unassign a card right on the card');
+const darkCard = page.locator('.card', { hasText: 'Dark mode for the portal' });
+await darkCard.locator('.person-btn').click();
+await page.locator('.menu .menu-item', { hasText: 'Unassigned' }).click();
+await page.waitForTimeout(400);
+assert.equal((await db()).workItems.find((w) => w.title === 'Dark mode for the portal').assignedTo, null);
+await darkCard.locator('.person-name', { hasText: 'Unassigned' }).waitFor();
 
 step('live updates reach a second browser tab');
 const other = await browser.newPage();

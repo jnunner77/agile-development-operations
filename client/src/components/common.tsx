@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { stateDef, type WorkItemType } from '../../../shared/process';
-import type { Member } from '../../../shared/types';
+import type { Member, WorkItem } from '../../../shared/types';
+import { api } from '../api';
 import { initials } from '../lib/format';
 import { useMembersById } from '../lib/hooks';
 import { dismissToast, useStore } from '../store';
@@ -40,6 +41,44 @@ export function Person({ id, size = 20, showName = true }: { id: string | null |
       <Avatar member={member} size={size} />
       {showName && <span className={member ? 'person-name' : 'person-name muted'}>{member?.name ?? 'Unassigned'}</span>}
     </span>
+  );
+}
+
+/**
+ * The assignee on a card, as a button that opens a short list to change it straight away:
+ * Unassigned and the active team members. Clicking it doesn't open the item or start a drag.
+ */
+export function AssigneePicker({ item, size = 18 }: { item: WorkItem; size?: number }) {
+  const members = useStore((s) => s.members);
+  const byId = useMembersById();
+  const menu = useMenu();
+  const current = item.assignedTo ?? null;
+  const name = (current && byId.get(current)?.name) || 'Unassigned';
+  const choose = (id: string | null) => {
+    if (id !== current) void api.updateWorkItem(item.id, { assignedTo: id });
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="person-btn"
+        title="Change who it's assigned to"
+        aria-label={`Assigned to ${name}. Change`}
+        aria-haspopup="menu"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onClick={(e) =>
+          menu.openAt(e, [
+            { label: 'Unassigned', checked: !current, onClick: () => choose(null) },
+            ...members.filter((m) => m.active || m.id === current).map((m) => ({ label: m.name, checked: current === m.id, onClick: () => choose(m.id) })),
+          ])
+        }
+      >
+        <Person id={current} size={size} />
+      </button>
+      {menu.element}
+    </>
   );
 }
 
@@ -184,6 +223,34 @@ export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: numb
   const [pos, setPos] = useState({ x, y });
   // Which item's submenu is open, and where that item is on screen.
   const [open, setOpen] = useState<{ idx: number; anchor: DOMRect } | null>(null);
+  // Keyboard: the menu takes focus (the checked item, else the first), arrow keys move through
+  // it, and closing gives focus back to what opened it unless something else took it.
+  const back = useRef<Element | null>(document.activeElement);
+  const buttons = () => [...(ref.current?.querySelectorAll<HTMLButtonElement>(':scope > .menu-item-wrap > .menu-item:not(:disabled)') ?? [])];
+  useEffect(() => {
+    const list = buttons();
+    (list.find((b) => b.dataset.checked === 'true') ?? list[0])?.focus({ preventScroll: true });
+    const opener = back.current;
+    return () => {
+      requestAnimationFrame(() => {
+        const a = document.activeElement;
+        if (opener instanceof HTMLElement && document.contains(opener) && (!a || a === document.body)) opener.focus({ preventScroll: true });
+      });
+    };
+  }, []);
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    const list = buttons();
+    const i = list.indexOf(document.activeElement as HTMLButtonElement);
+    const go = (k: number) => {
+      e.preventDefault();
+      list[(k + list.length) % list.length]?.focus();
+    };
+    if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i < 0 ? list.length - 1 : i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(list.length - 1);
+    else if (e.key === 'Tab') onClose();
+  };
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -211,7 +278,7 @@ export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: numb
     };
   }, [onClose]);
   return (
-    <div ref={ref} className="menu" style={{ left: pos.x, top: pos.y }} role="menu">
+    <div ref={ref} className="menu" style={{ left: pos.x, top: pos.y }} role="menu" onKeyDown={onMenuKey}>
       {items.map((item, idx) =>
         item.divider ? (
           <div key={idx} className="menu-divider" />
@@ -224,7 +291,9 @@ export function MenuPopup({ items, x, y, onClose }: { items: MenuItem[]; x: numb
             <button
               className={`menu-item ${item.danger ? 'danger' : ''} ${open?.idx === idx ? 'open' : ''}`}
               disabled={item.disabled}
-              role="menuitem"
+              role={item.checked != null ? 'menuitemradio' : 'menuitem'}
+              aria-checked={item.checked != null ? item.checked : undefined}
+              data-checked={item.checked ? 'true' : undefined}
               aria-haspopup={item.submenu ? 'menu' : undefined}
               aria-expanded={item.submenu ? open?.idx === idx : undefined}
               onClick={(e) => {

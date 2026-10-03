@@ -2022,6 +2022,17 @@ tr.selected .row-more {
 .person-btn .person {
   max-width: 100%;
 }
+.person-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+.person-btn:hover .person-name {
+  text-decoration: underline;
+}
+.person-btn:focus-visible,
+.menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 .task-activity {
   flex: 1 1 0;
   min-width: 0;
@@ -2665,6 +2676,10 @@ tr.selected .row-more {
   }
   .menu-item {
     padding: 11px 14px 11px 10px;
+  }
+  .person-btn {
+    min-height: 32px;
+    padding: 0 4px 0 0;
   }
   /* iOS zooms into inputs smaller than 16px when focused. */
   input,
