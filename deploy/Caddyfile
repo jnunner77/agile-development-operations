@@ -10,13 +10,14 @@
 	}
 }
 
-{$DOMAIN} {
-	# Nothing the app accepts is bigger than a backup import (50 MB).
+# Protections every site on this server gets.
+(protect) {
+	# Nothing the apps accept is bigger than a backup import (50 MB).
 	request_body {
 		max_size 60MB
 	}
 
-	# Only the methods the app uses.
+	# Only the methods the apps use.
 	@badMethod not method GET HEAD POST PUT PATCH DELETE
 	respond @badMethod 405
 
@@ -29,11 +30,9 @@
 	}
 	abort @scanners
 
-	# Compress everything except the live-update stream, which must reach browsers unbuffered.
+	# Compress everything except live-update streams, which must reach browsers unbuffered.
 	@compressible not path /api/events
 	encode @compressible zstd gzip
-
-	reverse_proxy app:4000
 
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
@@ -42,4 +41,17 @@
 		-Server
 		-Via
 	}
+}
+
+{$DOMAIN} {
+	import protect
+	reverse_proxy app:4000
+}
+
+# The Pokémon Binder Ledger (github.com/jnunner77/pokemon-card-organizer), run with its
+# deploy/with-boards.yml so this server's Docker network reaches it as binder:4100. Until it
+# runs, this address answers 502; Boards is unaffected. See "Hosting more apps" in deploy/README.md.
+binder.{$DOMAIN} {
+	import protect
+	reverse_proxy binder:4100
 }
