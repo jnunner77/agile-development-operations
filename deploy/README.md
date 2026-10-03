@@ -163,6 +163,28 @@ docker compose start app
 `docker-compose.yml`, run `docker compose up -d`, fix the accounts, then remove it and run
 `docker compose up -d` again.
 
+## Hosting more apps
+
+The Caddyfile also serves the [Pokémon Binder Ledger](https://github.com/jnunner77/pokemon-card-organizer)
+at `binder.<your DOMAIN>` (for example `binder.yourteam.duckdns.org`; DuckDNS answers for any
+name under yours, so there is nothing to set up there). Both sites get the same protections
+from the `(protect)` snippet at the top of the Caddyfile. The binder is a separate app with
+its own repository, password and data; Boards is unaffected whether or not it runs. To run it,
+follow that repository's `deploy/README.md`: clone it next to this checkout, set its password in
+its `.env`, and start it with `deploy/with-boards.yml` so it joins this server's Docker network.
+Until then `binder.<your DOMAIN>` answers 502.
+
+To host another app the same way, start it on this Docker network and add a site block:
+
+```
+myapp.{$DOMAIN} {
+	import protect
+	reverse_proxy myapp:8080
+}
+```
+
+then `docker compose restart caddy`.
+
 ## Security
 
 The app is built to sit on the open internet. Protections, from the outside in:
