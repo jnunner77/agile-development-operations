@@ -37,6 +37,9 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
   or put it in a URL.
 - Tokens can't change sign-in, team members, settings, integrations or backups; ask a person.
 - Link code to the items you work on as described above, so pull requests move them along.
+- Assign every Task to Claude (the member the token acts as, `GET /api/auth/status`) and every
+  PBI, Bug, Feature and Epic to Justin Nunner (`jnunner77`). Close your tasks (Done) once their
+  work is merged; a merge doesn't do it for pull requests in other repositories.
 
 ## Code conventions
 
