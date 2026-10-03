@@ -51,7 +51,16 @@ await page.locator('.menu-item', { hasText: 'Change state' }).tap();
 await page.locator('.submenu .menu-item', { hasText: 'In Progress' }).tap();
 await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === 'Add regression tests').state, 'In Progress');
-// 6. Bottom navigation
+// 6. Taskboard: reassign a backlog item by tapping the person on its card
+const lanePbi = page.locator('.tb-parent-card').first();
+const lanePbiTitle = (await lanePbi.locator('.card-title').textContent()).trim();
+const lanePbiOwner = (await db()).workItems.find((w) => w.title === lanePbiTitle).assignedTo;
+const someone = (await db()).members.filter((m) => m.active).find((m) => m.id !== lanePbiOwner);
+await lanePbi.locator('.person-btn').tap();
+await page.locator('.menu .menu-item', { hasText: someone.name }).tap();
+await page.waitForTimeout(400);
+assert.equal((await db()).workItems.find((w) => w.title === lanePbiTitle).assignedTo, someone.id, 'reassigned from the card');
+// 7. Bottom navigation
 await page.locator('.bottomnav-link', { hasText: 'Boards' }).tap();
 await page.waitForURL(/\/boards\//);
 assert.deepEqual(errors, []);

@@ -4,7 +4,7 @@ import { TYPE_DEFS, defaultState, type BacklogLevel, type WorkItemType } from '.
 import { formatShortDate } from '../../../shared/dates';
 import type { WorkItem } from '../../../shared/types';
 import { api } from '../api';
-import { Person, Tags, useMenu } from '../components/common';
+import { AssigneePicker, Tags, useMenu } from '../components/common';
 import { FilterBar } from '../components/FilterBar';
 import { Icon, TypeIcon } from '../components/Icon';
 import { useWorkItemDialog } from '../components/WorkItemForm';
@@ -240,7 +240,7 @@ function BoardCard({
         </button>
       </div>
       <div className="card-fields">
-        <Person id={item.assignedTo} size={18} />
+        <AssigneePicker item={item} />
         {item.effort != null && (
           <div className="card-field">
             <span className="muted">Effort</span> {formatNumber(item.effort)}
