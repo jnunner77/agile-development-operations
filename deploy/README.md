@@ -129,9 +129,21 @@ To link branches, commits and pull requests to work items, sign in as an adminis
 the webhook in your GitHub repository (`https://yourteam.duckdns.org/api/integrations/github/webhook`,
 content type `application/json`), and check the *ping* arrives under *Recent deliveries*.
 
+## Automatic operations
+
+Set up [`deploy/ops`](ops/README.md) once and the server looks after itself. Every night it:
+- backs up every app and copies the archives to a Cloud Storage bucket
+- updates each app when `main` changed, rolling back a version that doesn't come up healthy
+- cleans up old Docker images
+- checks the sites, certificates and disk
+- emails you through healthchecks.io only when something needs you
+
+Debian security updates install on their own, with reboots only in a 04:15 window. All of it
+stays inside the free tier. The commands below are for doing the same by hand.
+
 ## Day-to-day
 
-**Upgrade to the latest `main`:**
+**Upgrade to the latest `main`** (`deploy/ops` does this every night):
 
 ```bash
 cd ~/agile-development-operations
@@ -142,7 +154,8 @@ docker compose up -d
 
 **Backups.** Snapshots live on the VM's disk, so also copy data off it. `deploy/backup.sh`
 archives the database, snapshots and sign-in accounts to `~/boards-backups`, keeping the latest 14.
-Run it nightly:
+`deploy/ops` runs it nightly and copies the archive to Cloud Storage. Without `deploy/ops`, run it
+from cron:
 
 ```bash
 ( crontab -l; echo "0 3 * * * cd $PWD && deploy/backup.sh >> $HOME/boards-backup.log 2>&1" ) | crontab -
