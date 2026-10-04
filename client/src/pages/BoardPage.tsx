@@ -21,15 +21,24 @@ const DONE_LIMIT = 20;
 
 export function BoardPage() {
   const level = useLevel();
+  const userId = useStore((s) => s.currentUserId);
   if (!level) return <Navigate to="/boards/requirements" replace />;
-  return <Board key={level.key} level={level} />;
+  return <Board key={`${level.key}:${userId}`} level={level} userId={userId} />;
 }
 
-function Board({ level }: { level: BacklogLevel }) {
+/** Which cards show their child checklist: a board-wide default plus each card the user toggled. */
+interface CardFolds {
+  expandAll: boolean;
+  cards: Record<string, boolean>;
+}
+
+function Board({ level, userId }: { level: BacklogLevel; userId: string | null }) {
   const items = useStore((s) => s.workItems);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
   const [opts, setOpts] = useLocalState(`board.${level.key}`, { showAllDone: false, showChildren: true });
+  // Remembered per user, so whoever is signed in on this browser gets their own layout.
+  const [folds, setFolds] = useLocalState<CardFolds>(`board.${level.key}.cards.${userId ?? 'anonymous'}`, { expandAll: false, cards: {} });
   const [drop, setDrop] = useState<{ column: string; id: number | null; pos: 'before' | 'after' } | null>(null);
   const [adding, setAdding] = useState(false);
   const [addTitle, setAddTitle] = useState('');
@@ -65,6 +74,17 @@ function Board({ level }: { level: BacklogLevel }) {
     }
   };
 
+  const isExpanded = (id: number) => folds.cards[id] ?? folds.expandAll;
+  const setExpanded = (id: number, expanded: boolean) =>
+    setFolds((f) => {
+      const cards: Record<string, boolean> = {};
+      // Drop choices for deleted cards and ones that now match the default.
+      for (const [k, v] of Object.entries(f.cards)) if (itemsById.has(Number(k))) cards[k] = v;
+      if (expanded === f.expandAll) delete cards[id];
+      else cards[id] = expanded;
+      return { ...f, cards };
+    });
+
   const addItem = async () => {
     if (!addTitle.trim()) return;
     await api.createWorkItem(addType, { title: addTitle.trim(), position: 'top', state: defaultState(addType) });
@@ -89,6 +109,16 @@ function Board({ level }: { level: BacklogLevel }) {
         >
           <span className="btn-label">View options</span> <Icon name="settings" size={14} className="show-sm" /> <Icon name="chevronDown" size={12} />
         </button>
+        {opts.showChildren && (
+          <>
+            <button className="icon-btn" title="Expand all" aria-label="Expand all" onClick={() => setFolds({ expandAll: true, cards: {} })}>
+              <Icon name="expandAll" />
+            </button>
+            <button className="icon-btn" title="Collapse all" aria-label="Collapse all" onClick={() => setFolds({ expandAll: false, cards: {} })}>
+              <Icon name="collapseAll" />
+            </button>
+          </>
+        )}
         <button className={`icon-btn ${filterOpen || isFiltering(filters) ? 'active' : ''}`} title="Filter" onClick={() => setFilterOpen(!filterOpen)}>
           <Icon name="filter" />
         </button>
@@ -155,6 +185,8 @@ function Board({ level }: { level: BacklogLevel }) {
                       key={w.id}
                       item={w}
                       showChildren={opts.showChildren}
+                      expanded={isExpanded(w.id)}
+                      onExpandedChange={(v) => setExpanded(w.id, v)}
                       dropPos={drop?.id === w.id ? drop.pos : null}
                       onDragOver={(e) => {
                         if (!draggedIds().length || draggedIds().includes(w.id)) return;
@@ -185,12 +217,16 @@ function Board({ level }: { level: BacklogLevel }) {
 function BoardCard({
   item,
   showChildren,
+  expanded,
+  onExpandedChange,
   dropPos,
   onDragOver,
   onMenu,
 }: {
   item: WorkItem;
   showChildren: boolean;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   dropPos: 'before' | 'after' | null;
   onDragOver: (e: React.DragEvent) => void;
   onMenu: (e: React.MouseEvent) => void;
@@ -200,7 +236,6 @@ function BoardCard({
   const sprints = useStore((s) => s.sprints);
   const projectName = useStore((s) => s.settings.projectName);
   const today = useToday();
-  const [expanded, setExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [childTitle, setChildTitle] = useState('');
   const kids = (children.get(item.id) ?? []).filter((c) => c.state !== 'Removed');
@@ -264,7 +299,7 @@ function BoardCard({
         <div className="card-children">
           <div className="row gap-s">
             {kids.length > 0 && (
-              <button className="link-btn small" onClick={() => setExpanded(!expanded)}>
+              <button className="link-btn small" onClick={() => onExpandedChange(!expanded)}>
                 <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} /> {done}/{kids.length} {TYPE_DEFS[kids[0].type].shortName.toLowerCase()}s
               </button>
             )}
@@ -274,7 +309,7 @@ function BoardCard({
                 title={`Add ${childType}`}
                 onClick={() => {
                   setAdding(true);
-                  setExpanded(true);
+                  onExpandedChange(true);
                 }}
               >
                 <Icon name="add" size={10} />

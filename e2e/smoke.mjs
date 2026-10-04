@@ -149,6 +149,24 @@ await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === 'Dark mode for the portal').assignedTo, null);
 await darkCard.locator('.person-name', { hasText: 'Unassigned' }).waitFor();
 
+step('board: expand and collapse all cards, and remember a collapsed card');
+const checklists = page.locator('.card .checklist-item');
+const withKids = page.locator('.card', { has: page.locator('.card-children .link-btn') });
+assert.equal(await checklists.count(), 0);
+await page.getByRole('button', { name: 'Expand all' }).click();
+assert.ok((await checklists.count()) > 0);
+const firstCard = withKids.first();
+const firstTitle = (await firstCard.locator('.card-title').textContent()).trim();
+await firstCard.locator('.card-children .link-btn').first().click();
+assert.equal(await firstCard.locator('.checklist-item').count(), 0);
+await page.reload();
+const reloaded = page.locator('.card', { hasText: firstTitle });
+await reloaded.waitFor();
+assert.equal(await reloaded.locator('.checklist-item').count(), 0);
+assert.ok((await checklists.count()) > 0);
+await page.getByRole('button', { name: 'Collapse all' }).click();
+assert.equal(await checklists.count(), 0);
+
 step('live updates reach a second browser tab');
 const other = await browser.newPage();
 await other.goto(base + '/boards/requirements');
