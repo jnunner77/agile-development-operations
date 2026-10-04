@@ -45,28 +45,60 @@ export function useToday() {
   return today;
 }
 
-/** Persist a small piece of UI state (view options, pane toggles) per browser. */
+function readLocal<T>(key: string, initial: T): T {
+  try {
+    const raw = localStorage.getItem(`boards.${key}`);
+    return raw ? ({ ...initial, ...JSON.parse(raw) } as T) : initial;
+  } catch {
+    return initial;
+  }
+}
+
+/** Persist a small piece of UI state (view options, pane toggles) per browser. Follows `key` when it changes. */
 export function useLocalState<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(`boards.${key}`);
-      return raw ? ({ ...initial, ...JSON.parse(raw) } as T) : initial;
-    } catch {
-      return initial;
-    }
-  });
+  const [state, setState] = useState(() => ({ key, value: readLocal(key, initial) }));
+  let current = state;
+  if (state.key !== key) {
+    current = { key, value: readLocal(key, initial) };
+    setState(current);
+  }
   const set = (v: T | ((prev: T) => T)) => {
-    setValue((prev) => {
-      const next = typeof v === 'function' ? (v as (p: T) => T)(prev) : v;
+    setState((prev) => {
+      const base = prev.key === key ? prev.value : readLocal(key, initial);
+      const next = typeof v === 'function' ? (v as (p: T) => T)(base) : v;
       try {
         localStorage.setItem(`boards.${key}`, JSON.stringify(next));
       } catch {
         // Non-essential; ignore storage failures.
       }
-      return next;
+      return { key, value: next };
     });
   };
-  return [value, set];
+  return [current.value, set];
+}
+
+/**
+ * Remembers which sections (cards, swimlanes) the current user has expanded or collapsed,
+ * per browser: a default for all of them plus each one the user toggled since.
+ * `keep` drops remembered choices for sections that no longer exist.
+ */
+export function useFolds(key: string, openByDefault: boolean, keep: (id: string) => boolean = () => true) {
+  const userId = useStore((s) => s.currentUserId);
+  const [folds, setFolds] = useLocalState<{ allOpen: boolean; open: Record<string, boolean> }>(`${key}.folds.${userId ?? 'anonymous'}`, {
+    allOpen: openByDefault,
+    open: {},
+  });
+  const isOpen = (id: string | number) => folds.open[id] ?? folds.allOpen;
+  const setOpen = (id: string | number, open: boolean) =>
+    setFolds((f) => {
+      const next: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(f.open)) if (keep(k)) next[k] = v;
+      if (open === f.allOpen) delete next[id];
+      else next[id] = open;
+      return { ...f, open: next };
+    });
+  const setAll = (open: boolean) => setFolds({ allOpen: open, open: {} });
+  return { isOpen, setOpen, setAll };
 }
 
 /** Rolled-up hours for an item and all of its descendants. */
