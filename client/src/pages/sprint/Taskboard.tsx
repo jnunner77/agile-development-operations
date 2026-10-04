@@ -8,7 +8,7 @@ import { useWorkItemDialog } from '../../components/WorkItemForm';
 import { useItemMenu } from '../../lib/actions';
 import { draggedIds, dropPosition, endDrag, startDrag } from '../../lib/dnd';
 import { formatHours, formatNumber } from '../../lib/format';
-import { useItemsById, useLocalState, useMembersById } from '../../lib/hooks';
+import { useFolds, useItemsById, useLocalState, useMembersById } from '../../lib/hooks';
 import { useStore } from '../../store';
 
 interface Lane {
@@ -29,7 +29,8 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
   const menu = useMenu();
   const itemMenu = useItemMenu();
   const [opts, setOpts] = useLocalState('taskboard', { groupBy: 'stories' as 'stories' | 'people', person: '__all__' });
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Collapsed swimlanes, remembered for the current user in each sprint.
+  const lanesOpen = useFolds(`taskboard.${sprint.id}`, true, (key) => !key.startsWith('s:') || itemsById.has(Number(key.slice(2))));
   const [drop, setDrop] = useState<{ lane: string; column: string; id: number | null; pos: 'before' | 'after' } | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
@@ -90,13 +91,6 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
     setNewTitle('');
   };
 
-  const toggle = (key: string) => {
-    const next = new Set(collapsed);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setCollapsed(next);
-  };
-
   return (
     <div className="sprint-view">
       <div className="view-toolbar">
@@ -127,11 +121,11 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
             <option value="people">People</option>
           </select>
         </label>
-        <button className="icon-btn" title="Expand all" onClick={() => setCollapsed(new Set())}>
-          <Icon name="expandAll" />
+        <button className="btn btn-ghost" title="Expand all" aria-label="Expand all" onClick={() => lanesOpen.setAll(true)}>
+          <Icon name="expandAll" size={14} /> <span className="btn-label">Expand all</span>
         </button>
-        <button className="icon-btn" title="Collapse all" onClick={() => setCollapsed(new Set(lanes.map((l) => l.key)))}>
-          <Icon name="collapseAll" />
+        <button className="btn btn-ghost" title="Collapse all" aria-label="Collapse all" onClick={() => lanesOpen.setAll(false)}>
+          <Icon name="collapseAll" size={14} /> <span className="btn-label">Collapse all</span>
         </button>
       </div>
       {lanes.length === 0 ? (
@@ -149,12 +143,12 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
             ))}
           </div>
           {lanes.map((lane) => {
-            const isCollapsed = collapsed.has(lane.key);
+            const isCollapsed = !lanesOpen.isOpen(lane.key);
             const remaining = lane.tasks.filter((t) => t.state !== 'Done').reduce((s, t) => s + (t.remainingWork ?? 0), 0);
             return (
               <div key={lane.key} className={`tb-lane ${isCollapsed ? 'collapsed' : ''}`}>
                 <div className="tb-lane-header">
-                  <button className="expander" onClick={() => toggle(lane.key)} aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
+                  <button className="expander" onClick={() => lanesOpen.setOpen(lane.key, isCollapsed)} aria-label={isCollapsed ? 'Expand' : 'Collapse'}>
                     <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} />
                   </button>
                   {lane.parent ? (
@@ -210,7 +204,7 @@ export function Taskboard({ sprint }: { sprint: Sprint }) {
                     onClick={() => {
                       setAdding(lane.key);
                       setNewTitle('');
-                      if (isCollapsed) toggle(lane.key);
+                      if (isCollapsed) lanesOpen.setOpen(lane.key, true);
                     }}
                   >
                     <Icon name="add" size={14} />

@@ -13,7 +13,7 @@ import { useItemMenu } from '../lib/actions';
 import { draggedIds, dropPosition, endDrag, startDrag } from '../lib/dnd';
 import { EMPTY_FILTERS, isFiltering, matchesFilters, type Filters } from '../lib/filters';
 import { formatNumber, iterationName } from '../lib/format';
-import { useChildrenMap, useItemsById, useLocalState, useToday } from '../lib/hooks';
+import { useChildrenMap, useFolds, useItemsById, useLocalState, useToday } from '../lib/hooks';
 import { useStore } from '../store';
 import { LevelHeader, useLevel } from './BacklogPage';
 
@@ -21,24 +21,15 @@ const DONE_LIMIT = 20;
 
 export function BoardPage() {
   const level = useLevel();
-  const userId = useStore((s) => s.currentUserId);
   if (!level) return <Navigate to="/boards/requirements" replace />;
-  return <Board key={`${level.key}:${userId}`} level={level} userId={userId} />;
+  return <Board key={level.key} level={level} />;
 }
 
-/** Which cards show their child checklist: a board-wide default plus each card the user toggled. */
-interface CardFolds {
-  expandAll: boolean;
-  cards: Record<string, boolean>;
-}
-
-function Board({ level, userId }: { level: BacklogLevel; userId: string | null }) {
+function Board({ level }: { level: BacklogLevel }) {
   const items = useStore((s) => s.workItems);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
   const [opts, setOpts] = useLocalState(`board.${level.key}`, { showAllDone: false, showChildren: true });
-  // Remembered per user, so whoever is signed in on this browser gets their own layout.
-  const [folds, setFolds] = useLocalState<CardFolds>(`board.${level.key}.cards.${userId ?? 'anonymous'}`, { expandAll: false, cards: {} });
   const [drop, setDrop] = useState<{ column: string; id: number | null; pos: 'before' | 'after' } | null>(null);
   const [adding, setAdding] = useState(false);
   const [addTitle, setAddTitle] = useState('');
@@ -46,6 +37,8 @@ function Board({ level, userId }: { level: BacklogLevel; userId: string | null }
   const itemsById = useItemsById();
   const menu = useMenu();
   const itemMenu = useItemMenu();
+  // Which cards show their child items, remembered for the current user.
+  const folds = useFolds(`board.${level.key}`, false, (id) => itemsById.has(Number(id)));
 
   const columns = useMemo(() => {
     const byColumn = new Map<string, WorkItem[]>(level.columns.map((c) => [c, []]));
@@ -74,17 +67,6 @@ function Board({ level, userId }: { level: BacklogLevel; userId: string | null }
     }
   };
 
-  const isExpanded = (id: number) => folds.cards[id] ?? folds.expandAll;
-  const setExpanded = (id: number, expanded: boolean) =>
-    setFolds((f) => {
-      const cards: Record<string, boolean> = {};
-      // Drop choices for deleted cards and ones that now match the default.
-      for (const [k, v] of Object.entries(f.cards)) if (itemsById.has(Number(k))) cards[k] = v;
-      if (expanded === f.expandAll) delete cards[id];
-      else cards[id] = expanded;
-      return { ...f, cards };
-    });
-
   const addItem = async () => {
     if (!addTitle.trim()) return;
     await api.createWorkItem(addType, { title: addTitle.trim(), position: 'top', state: defaultState(addType) });
@@ -111,11 +93,11 @@ function Board({ level, userId }: { level: BacklogLevel; userId: string | null }
         </button>
         {opts.showChildren && (
           <>
-            <button className="icon-btn" title="Expand all" aria-label="Expand all" onClick={() => setFolds({ expandAll: true, cards: {} })}>
-              <Icon name="expandAll" />
+            <button className="btn btn-ghost" title="Expand all" aria-label="Expand all" onClick={() => folds.setAll(true)}>
+              <Icon name="expandAll" size={14} /> <span className="btn-label">Expand all</span>
             </button>
-            <button className="icon-btn" title="Collapse all" aria-label="Collapse all" onClick={() => setFolds({ expandAll: false, cards: {} })}>
-              <Icon name="collapseAll" />
+            <button className="btn btn-ghost" title="Collapse all" aria-label="Collapse all" onClick={() => folds.setAll(false)}>
+              <Icon name="collapseAll" size={14} /> <span className="btn-label">Collapse all</span>
             </button>
           </>
         )}
@@ -185,8 +167,8 @@ function Board({ level, userId }: { level: BacklogLevel; userId: string | null }
                       key={w.id}
                       item={w}
                       showChildren={opts.showChildren}
-                      expanded={isExpanded(w.id)}
-                      onExpandedChange={(v) => setExpanded(w.id, v)}
+                      expanded={folds.isOpen(w.id)}
+                      onExpandedChange={(v) => folds.setOpen(w.id, v)}
                       dropPos={drop?.id === w.id ? drop.pos : null}
                       onDragOver={(e) => {
                         if (!draggedIds().length || draggedIds().includes(w.id)) return;

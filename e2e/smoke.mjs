@@ -90,6 +90,18 @@ await card.dragTo(lane.locator('.tb-cell').nth(1));
 await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === 'Test profile editing').state, 'In Progress');
 
+step('taskboard: collapse a swimlane, remember it, then expand and collapse all');
+const laneToggle = lane.locator('.tb-lane-header .expander');
+await laneToggle.click();
+await page.reload();
+await lane.waitFor();
+assert.match(await lane.getAttribute('class'), /\bcollapsed\b/);
+assert.ok((await page.locator('.tb-lane:not(.collapsed)').count()) > 0);
+await page.getByRole('button', { name: 'Collapse all' }).click();
+assert.equal(await page.locator('.tb-lane:not(.collapsed)').count(), 0);
+await page.getByRole('button', { name: 'Expand all' }).click();
+assert.equal(await page.locator('.tb-lane.collapsed').count(), 0);
+
 step('taskboard: change who a backlog item and a task are assigned to, right on the card');
 const people = (await db()).members.filter((m) => m.active);
 const parentCard = page.locator('.tb-parent-card', { hasText: 'Edit profile details' });
