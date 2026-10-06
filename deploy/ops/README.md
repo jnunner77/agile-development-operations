@@ -238,12 +238,15 @@ pull request that adds it is merged:
    gcloud compute ssh boards --zone=us-central1-a --tunnel-through-iap
    ```
 
-2. **Get the new scripts and install the timer.** Run `install.sh` with no settings; it keeps the ones in
-   `~/.config/nunner-ops.env`:
+2. **Get the new scripts and install the timer.** Update Boards through the nightly job rather
+   than `git pull`: a bare pull would move the checkout without rebuilding, and the update step
+   would then think Boards is up to date. Then run `install.sh` with no settings; it keeps the
+   ones in `~/.config/nunner-ops.env`:
 
    ```bash
+   sudo systemctl start nunner-ops       # a few minutes; brings Boards (and these scripts) up to date
    cd ~/agile-development-operations
-   git pull
+   git log --oneline -1                  # should show the merge that adds watching main
    deploy/ops/install.sh
    ```
 
