@@ -134,6 +134,7 @@ content type `application/json`), and check the *ping* arrives under *Recent del
 Set up [`deploy/ops`](ops/README.md) once and the server looks after itself. Every night it:
 - backs up every app and copies the archives to a Cloud Storage bucket
 - updates each app when `main` changed, rolling back a version that doesn't come up healthy
+  (and between nights it checks `main` every 5 minutes, so a merge goes live within minutes)
 - cleans up old Docker images
 - checks the sites, certificates and disk
 - emails you through healthchecks.io only when something needs you
@@ -143,7 +144,7 @@ stays inside the free tier. The commands below are for doing the same by hand.
 
 ## Day-to-day
 
-**Upgrade to the latest `main`** (`deploy/ops` does this every night):
+**Upgrade to the latest `main`** (`deploy/ops` does this within minutes of a merge):
 
 ```bash
 cd ~/agile-development-operations

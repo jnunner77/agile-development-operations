@@ -6,9 +6,11 @@ Once this is set up, the server looks after itself. Every night at 02:30 (Vancou
 1. **Backs up** Boards and the binder to `~/boards-backups` and `~/binder-backups` (newest 14 kept).
 2. **Copies both archives to Cloud Storage**, off the VM's disk. The bucket deletes copies after
    35 days. The VM can add copies but can't delete them, so a compromised server can't wipe its backups.
-3. **Updates both apps** when `main` has changed on GitHub, so a merged pull request goes live
-   the next night. A new version that doesn't come up healthy is **rolled back** automatically.
-   On Sundays it also rebuilds on fresh base images (security fixes in Node and Debian).
+3. **Updates both apps** when `main` has changed on GitHub. A new version that doesn't come up
+   healthy is **rolled back** automatically. On Sundays it also rebuilds on fresh base images
+   (security fixes in Node and Debian). Between nightly runs, **`nunner-watch`** checks `main`
+   every 5 minutes, so a merged pull request goes live within about 15 minutes
+   ([Watching main](#watching-main)).
 4. **Cleans up** old Docker images and build cache, so the 30 GB disk doesn't fill.
 5. **Checks** both sites over HTTPS, their certificates, disk, swap, and the binder's own
    Overview checks, including cards that need a match.
@@ -206,14 +208,110 @@ That's it. Nothing else to do unless an email arrives.
 
 ---
 
+## Watching main
+
+Every 5 minutes the `nunner-watch` timer runs `deploy/ops/nightly.sh --watch`:
+
+- For each app it asks GitHub for the commit at `main` (`git ls-remote`, a few hundred bytes).
+  When that's already live, it stops there and writes nothing to the log.
+- When `main` moved, it updates **only that app** exactly as the nightly run does: build at low
+  priority, start, health check, and **roll back** if the new version isn't healthy. The site keeps
+  serving the old version while it builds (5–10 minutes on the e2-micro). No backups, base-image
+  refresh or other checks; those stay nightly.
+- A commit that didn't build or was rolled back **isn't tried again every 5 minutes**. The next
+  merge to `main` is tried straight away, and the nightly run retries it once a night.
+  To retry it now (say, after fixing the checkout on the VM):
+  `rm ~/.local/state/nunner-ops/failed-binder && sudo systemctl start nunner-watch` (or `failed-boards`).
+- It never overlaps the nightly run. If an update is building at 02:30, the nightly run waits for it.
+- A failed or rolled-back update sets the **`nunner-updates`** check down, and healthchecks.io emails
+  you. It stays down until that app is live on its latest `main` again. A site left down (the
+  rollback failed too) also sets **`nunner-nightly`** down at once.
+
+### Turning it on 🖥
+
+It comes with `install.sh`. If `deploy/ops` was installed before watching existed, then after the
+pull request that adds it is merged:
+
+1. **Connect to the VM** (from your own computer):
+
+   ```bash
+   gcloud compute ssh boards --zone=us-central1-a --tunnel-through-iap
+   ```
+
+2. **Get the new scripts and install the timer.** Update Boards through the nightly job rather
+   than `git pull`: a bare pull would move the checkout without rebuilding, and the update step
+   would then think Boards is up to date. Then run `install.sh` with no settings; it keeps the
+   ones in `~/.config/nunner-ops.env`:
+
+   ```bash
+   sudo systemctl start nunner-ops       # a few minutes; brings Boards (and these scripts) up to date
+   cd ~/agile-development-operations
+   git log --oneline -1                  # should show the merge that adds watching main
+   deploy/ops/install.sh
+   ```
+
+   **Look for** `Wrote /etc/systemd/system/nunner-watch.service` and `…nunner-watch.timer`, and
+   `nunner-watch.timer` in the table at the end, due within 5 minutes.
+
+   **If not:** `isn't a clean checkout` or a `git pull` error means files were edited on the VM: run
+   `git status`, then `git checkout -- .` to drop the edits (`.env` is safe; it isn't tracked).
+
+3. **Check that it runs** (wait for the next 5-minute mark):
+
+   ```bash
+   systemctl list-timers 'nunner-*'
+   systemctl status nunner-watch --no-pager
+   ```
+
+   **Look for** `nunner-watch.timer` with a `NEXT` time under 5 minutes away and a `LAST` time,
+   and in the status `Active: inactive (dead)` with `status=0/SUCCESS`: it checked and found
+   nothing new.
+
+4. **Try it with your next merge.** Merge any pull request in Boards or the binder, then on the VM:
+
+   ```bash
+   journalctl -u nunner-watch -f
+   ```
+
+   Within 5 minutes you see `binder: building 1a2b3c4…` (or `boards:`). About 5–10 minutes later
+   there's a short report, `binder: updated … → 1a2b3c4 (<commit title>), healthy`. Press Ctrl+C
+   to stop watching. The report is also in `~/.local/state/nunner-ops/last-watch.txt`.
+
+   Or do all of it in one line from your own computer:
+
+   ```bash
+   gcloud compute ssh boards --zone=us-central1-a --tunnel-through-iap --command 'journalctl -u nunner-watch -f' -- -t
+   ```
+
+**Settings** in `~/.config/nunner-ops.env`:
+
+| Setting | Default | |
+| --- | --- | --- |
+| `WATCH_MAIN` | `on` | `off`: updates happen in the nightly run only. Run `deploy/ops/install.sh` after changing it. |
+| `WATCH_MINUTES` | `5` | How often to check, 1–30 minutes. Run `deploy/ops/install.sh` after changing it. |
+| `AUTO_UPDATE` | `on` | `off` stops all automatic updates, nightly and watched. |
+
+Or set them while installing, e.g. `WATCH_MINUTES=2 deploy/ops/install.sh`.
+
+**Free tier:** a check sends a few KB to GitHub per app, well under 50 MB a month of the 1 GB
+outbound allowance at 5 minutes. A build happens only when `main` changed, the same builds the
+nightly run would do, just sooner.
+
+---
+
 ## Day to day
 
 - **Change a setting:** edit `~/.config/nunner-ops.env` (`AUTO_UPDATE=off` stops automatic
   updates; `REFRESH_WEEKDAY=6` refreshes base images on Saturdays instead). It takes effect on
   the next run.
-- **Run now:** `sudo systemctl start nunner-ops` (or `deploy/ops/nightly.sh` as yourself).
+- **Run now:** `sudo systemctl start nunner-ops` (or `deploy/ops/nightly.sh` as yourself). To
+  start it and follow along, from your own computer:
+  `gcloud compute ssh boards --zone=us-central1-a --tunnel-through-iap --command 'sudo systemctl start nunner-ops --no-block && journalctl -u nunner-ops -f' -- -t`
+  (Ctrl+C once the report shows; the run carries on regardless).
+- **Update now, without waiting for the watch:** `sudo systemctl start nunner-watch`.
 - **When it runs next:** `systemctl list-timers 'nunner-*'`.
-- **History:** `journalctl -u nunner-ops --since -7d`.
+- **History:** `journalctl -u nunner-ops --since -7d`; updates between nights:
+  `journalctl -u nunner-watch --since -7d`.
 - **Restore from Cloud Storage:** download an archive in the console (**Cloud Storage → Buckets →
   <your bucket> → binder/ or boards/ → Download**), upload it to the VM, then follow the
   "Roll back the ledger's data" or Boards restore steps.

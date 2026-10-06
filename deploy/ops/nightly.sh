@@ -11,6 +11,12 @@
 #   sudo systemctl start nunner-ops        # or: deploy/ops/nightly.sh
 # Last report: cat ~/.local/state/nunner-ops/last-report.txt; history: journalctl -u nunner-ops
 #
+# With --watch (the nunner-watch timer, every few minutes) it only does step 3, and only for the
+# apps whose main changed on GitHub, so a merged pull request goes live within minutes. Checking
+# costs one git ls-remote per app; when nothing changed it prints nothing and exits. A commit that
+# failed to build or was rolled back isn't tried again until main moves on (the nightly run still
+# retries it). Last report: ~/.local/state/nunner-ops/last-watch.txt; journalctl -u nunner-watch
+#
 # Everything runs one step at a time, niced, with nothing in the background: the e2-micro has
 # 1 GB of memory and a fraction of a CPU, and both apps keep serving while this runs.
 set -uo pipefail
@@ -117,32 +123,45 @@ offsite_app() { # name dir
 free_mb() { awk '/^(MemAvailable|SwapFree):/ {s += $2} END {print int(s / 1024)}' /proc/meminfo; }
 disk_free_mb() { df -Pm / | awk 'NR == 2 {print $4}'; }
 
+# A commit of main that couldn't be put live: kept in $STATE/failed-<app> so the watch doesn't
+# retry it every few minutes. Cleared once main is live.
+failed_sha() { cat "$STATE/failed-$1" 2>/dev/null; }
+update_problem() { # name sha message
+  UPDATE_PROBLEMS+=("$3")
+  [ -n "$2" ] && echo "$2" >"$STATE/failed-$1"
+}
+
 update_app() { # name dir service host
   local name=$1 dir=$2 service=$3 host=$4 old new refresh=0 id image repo log
   cd "$dir" || return
   if ! git fetch -q origin main 2>/dev/null; then
-    UPDATE_PROBLEMS+=("$name: couldn't fetch from GitHub; not updated")
+    # The watch tries again in a few minutes; the nightly run reports it.
+    if [ "$WATCH" = 1 ]; then echo "$name: couldn't fetch from GitHub; trying again next time"
+    else UPDATE_PROBLEMS+=("$name: couldn't fetch from GitHub; not updated"); fi
     return
   fi
   old=$(git rev-parse HEAD)
   new=$(git rev-parse origin/main)
-  [ "$(date +%u)" = "${REFRESH_WEEKDAY:-7}" ] && refresh=1
+  [ "$WATCH" = 0 ] && [ "$(date +%u)" = "${REFRESH_WEEKDAY:-7}" ] && refresh=1
   if [ "$old" = "$new" ] && [ $refresh = 0 ]; then
+    rm -f "$STATE/failed-$name"
     UPDATES+=("$name: up to date (${old:0:7})")
     return
   fi
   if [ "$(git rev-parse --abbrev-ref HEAD)" != main ] || [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-    UPDATE_PROBLEMS+=("$name: $dir isn't a clean checkout of main (git status), so it isn't updated automatically")
+    update_problem "$name" "$new" "$name: $dir isn't a clean checkout of main (git status), so it isn't updated automatically"
     return
   fi
   if ! git merge-base --is-ancestor "$old" "$new"; then
-    UPDATE_PROBLEMS+=("$name: main on GitHub doesn't follow on from ${old:0:7}; update it by hand")
+    update_problem "$name" "$new" "$name: main on GitHub doesn't follow on from ${old:0:7}; update it by hand"
     return
   fi
   if [ "$(free_mb)" -lt "${MIN_FREE_MB:-600}" ] || [ "$(disk_free_mb)" -lt 2048 ]; then
-    UPDATE_PROBLEMS+=("$name: not enough free memory ($(free_mb) MB) or disk ($(disk_free_mb) MB) to build; will try tomorrow")
+    if [ "$WATCH" = 1 ]; then echo "$name: not enough free memory ($(free_mb) MB) or disk ($(disk_free_mb) MB) to build ${new:0:7}; trying again next time"
+    else UPDATE_PROBLEMS+=("$name: not enough free memory ($(free_mb) MB) or disk ($(disk_free_mb) MB) to build; will try tomorrow"); fi
     return
   fi
+  ATTEMPTED=1
 
   # Keep the running image so a bad update can be undone without rebuilding.
   id=$(docker compose ps -q "$service")
@@ -157,7 +176,7 @@ update_app() { # name dir service host
   [ $refresh = 1 ] && pull=(--pull)
   if ! nice -n 10 docker compose build "${pull[@]}" "$service" >"$log" 2>&1; then
     git reset -q --hard "$old"
-    UPDATE_PROBLEMS+=("$name: building ${new:0:7} failed, so the old version keeps running. Last lines: $(tail -3 "$log" | tr '\n' ' ')")
+    update_problem "$name" "$new" "$name: building ${new:0:7} failed, so the old version keeps running. Last lines: $(tail -3 "$log" | tr '\n' ' ')"
     return
   fi
   [ $refresh = 1 ] && [ "$name" = boards ] && docker compose pull -q caddy >/dev/null 2>&1
@@ -167,6 +186,7 @@ update_app() { # name dir service host
     if [ "$name" = boards ] && ! git diff --quiet "$old" "$new" -- deploy/Caddyfile; then
       docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile >>"$log" 2>&1 || docker compose restart caddy >>"$log" 2>&1
     fi
+    rm -f "$STATE/failed-$name"
     if [ "$old" = "$new" ]; then UPDATES+=("$name: base images refreshed (${new:0:7}), healthy")
     else UPDATES+=("$name: updated ${old:0:7} → ${new:0:7} ($(git log --format=%s -1 "$new")), healthy"); fi
     return
@@ -176,8 +196,9 @@ update_app() { # name dir service host
   [ -n "$image" ] && docker image tag "$repo:rollback" "$image"
   docker compose up -d >>"$log" 2>&1
   if wait_healthy "$dir" "$service" 180; then
-    UPDATE_PROBLEMS+=("$name: ${new:0:7} didn't come up healthy, so it was rolled back to ${old:0:7}. Build and start log: $log")
+    update_problem "$name" "$new" "$name: ${new:0:7} didn't come up healthy, so it was rolled back to ${old:0:7}. Build and start log: $log"
   else
+    echo "$new" >"$STATE/failed-$name"
     problem "$name: ${new:0:7} didn't come up healthy and the rollback to ${old:0:7} isn't healthy either. Log: $log"
   fi
 }
@@ -258,10 +279,57 @@ ping_hc() { # check-name ok|fail body
   curl -fsS -m 15 --retry 3 -o /dev/null --data-binary "$3" "$url?create=1" || echo "couldn't reach healthchecks.io"
 }
 
+# ---- watch: update the apps whose main changed, within minutes of a merge --------------------
+watch_main() {
+  local name dir service host app remote changed=() started=$SECONDS report
+  [ "${AUTO_UPDATE:-on}" = on ] && [ "${WATCH_MAIN:-on}" = on ] && [ -n "$DOMAIN" ] || return 0
+  for app in "${APPS[@]}"; do
+    IFS='|' read -r name dir service host <<<"$app"
+    remote=$(timeout 60 git -C "$dir" ls-remote origin refs/heads/main 2>/dev/null | cut -f1)
+    [ -n "$remote" ] || continue # GitHub didn't answer: try again next time
+    [ "$remote" = "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" ] && continue
+    [ "$remote" = "$(failed_sha "$name")" ] && continue # tried already; waits for a newer main or the nightly run
+    changed+=("$app")
+  done
+  [ ${#changed[@]} -gt 0 ] || return 0
+
+  ATTEMPTED=0
+  for app in "${changed[@]}"; do IFS='|' read -r name dir service host <<<"$app"; update_app "$name" "$dir" "$service" "$host" </dev/null; done
+  cd "$HOME" || true
+  [ "$ATTEMPTED" = 1 ] || [ ${#UPDATE_PROBLEMS[@]} -gt 0 ] || [ ${#PROBLEMS[@]} -gt 0 ] || return 0
+  # An app still held back by an earlier failure keeps the updates check down.
+  for app in "${APPS[@]}"; do
+    IFS='|' read -r name dir service host <<<"$app"
+    [ -n "$(failed_sha "$name")" ] && ! printf '%s\n' "${UPDATE_PROBLEMS[@]}" "${PROBLEMS[@]}" | grep -q "^$name: " &&
+      UPDATE_PROBLEMS+=("$name: still on $(git -C "$dir" rev-parse --short HEAD); main $(failed_sha "$name" | cut -c1-7) couldn't be put live, and the nightly run tries it again (the report from that try says why)")
+  done
+
+  report=$(
+    echo "nunner-watch on $(hostname), $(TZ="${OPS_TIME_ZONE:-America/Vancouver}" date '+%Y-%m-%d %H:%M %Z'), took $(((SECONDS - started) / 60)) min $(((SECONDS - started) % 60)) s"
+    section "PROBLEMS" "${PROBLEMS[@]}"
+    section "UPDATE PROBLEMS" "${UPDATE_PROBLEMS[@]}"
+    section "UPDATES" "${UPDATES[@]}"
+  )
+  echo "$report" >"$STATE/last-watch.txt"
+  printf '\n%s\n' "$report"
+  # A site left down (the rollback didn't come up either) can't wait for the night.
+  [ ${#PROBLEMS[@]} -eq 0 ] || ping_hc nightly fail "$report"
+  ping_hc updates "$([ ${#UPDATE_PROBLEMS[@]} -eq 0 ] && echo ok || echo fail)" "$report"
+  [ ${#PROBLEMS[@]} -eq 0 ] && [ ${#UPDATE_PROBLEMS[@]} -eq 0 ]
+}
+
 main() {
+  WATCH=0
+  [ "${1:-}" = --watch ] && WATCH=1
   mkdir -p "$STATE"
   exec 9>"$STATE/lock"
-  flock -n 9 || { echo "Another run is in progress."; exit 0; }
+  if [ "$WATCH" = 1 ]; then
+    flock -n 9 || exit 0 # the nightly run (or a manual one) is going; it updates too
+  elif ! flock -n 9; then
+    # Usually the watch building an update: wait for it rather than skip the night's backups.
+    echo "Another run is in progress; waiting for it to finish…"
+    flock -w 6600 9 || { echo "Still busy after 110 minutes; giving up."; exit 1; }
+  fi
   # shellcheck source=/dev/null
   [ -f "$CONFIG" ] && . "$CONFIG"
   BOARDS_DIR="${BOARDS_DIR:-$HOME/agile-development-operations}"
@@ -271,6 +339,10 @@ main() {
   declare -gA NEWEST=()
   OFFSITE_MARKED=""
   mapfile -t APPS < <(apps)
+  if [ "$WATCH" = 1 ]; then
+    watch_main
+    return
+  fi
   local started=$SECONDS name dir service host app
 
   if [ -z "$DOMAIN" ]; then
