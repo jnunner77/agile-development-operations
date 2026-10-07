@@ -30,8 +30,9 @@
 	}
 	abort @scanners
 
-	# Compress everything except live-update streams, which must reach browsers unbuffered.
-	@compressible not path /api/events
+	# Compress everything except live-update streams, which must reach browsers unbuffered
+	# (/api/guest/events: the binder's guest page).
+	@compressible not path /api/events /api/guest/events
 	encode @compressible zstd gzip
 
 	header {
