@@ -68,12 +68,6 @@ export function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function stripHtml(html: string): string {
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return (div.textContent ?? '').trim();
-}
-
 interface Lookup {
   members: Member[];
   sprints: Sprint[];
@@ -105,7 +99,7 @@ export function formatFieldValue(field: string, value: unknown, lookup: Lookup):
     case 'completedWork':
       return formatHours(value as number);
     default:
-      if (HTML_FIELDS.has(field)) return stripHtml(String(value));
+      // HTML fields (HTML_FIELDS) aren't formatted here: history shows them with RichView, which sanitizes them.
       return String(value);
   }
 }
