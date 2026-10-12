@@ -69,7 +69,9 @@ site_ok() { curl -fsS -m 20 -o /dev/null "https://$1/api/health"; }
 # ---- 1. backups ------------------------------------------------------------------------------
 backup_app() { # name dir
   local out file
-  if ! out=$(cd "$2" && KEEP="${KEEP_ARCHIVES:-14}" deploy/backup.sh 2>&1); then
+  # Owner-only archives (they hold password hashes and secrets), whatever each app's script does.
+  # Scoped to this subshell: git pulls and image builds elsewhere need the normal umask.
+  if ! out=$(cd "$2" && umask 077 && KEEP="${KEEP_ARCHIVES:-14}" deploy/backup.sh 2>&1); then
     problem "$1: the nightly backup failed: $(echo "$out" | tail -2 | tr '\n' ' ')"
     return
   fi

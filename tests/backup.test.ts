@@ -25,6 +25,7 @@ afterEach(() => {
 function backup() {
   // A permissive umask, like a typical login shell or cron job.
   return spawnSync('bash', ['-c', 'umask 022; exec deploy/backup.sh "$1"', 'backup', dest], {
+    cwd: path.resolve(import.meta.dirname, '..'),
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     encoding: 'utf8',
   });
@@ -34,7 +35,7 @@ describe('deploy/backup.sh', () => {
   it('writes archives only their owner can read, and fixes older ones', async () => {
     fs.mkdirSync(dest, { mode: 0o755 });
     const old = path.join(dest, 'boards-20250101-000000.tar.gz');
-    fs.writeFileSync(old, 'old', { mode: 0o644 });
+    fs.writeFileSync(old, 'old');
     fs.chmodSync(old, 0o644);
 
     const run = backup();
