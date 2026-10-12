@@ -71,7 +71,8 @@ docker compose up -d --build
 - Expand rows to see children; add child items inline with `+`.
 - View options: show **parents** (hierarchy), in-progress items, completed children, items already
   planned in sprints; keyword/type/state/assignee/tag/iteration filters.
-- Multi-select (Ctrl/Shift-click) with bulk move-to-sprint, assign, change state, re-parent, delete.
+- Multi-select (Ctrl/Shift-click) with bulk move-to-sprint, assign, change state, re-parent, add or
+  remove tags, delete.
 - **Planning pane**: drag items onto a sprint to plan them, or onto the backlog to move them back.
   Open child tasks travel with their parent.
 

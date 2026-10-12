@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { TYPE_DEFS, type WorkItemType } from '../../../shared/process';
 import { nextSprint, sprintTimeframe } from '../../../shared/sprints';
 import type { Sprint, WorkItem } from '../../../shared/types';
@@ -26,6 +26,7 @@ export function useItemMenu() {
   const projectName = useStore((s) => s.settings.projectName);
   const today = useToday();
   const [parentFor, setParentFor] = useState<WorkItem[] | null>(null);
+  const [tagsFor, setTagsFor] = useState<WorkItem[] | null>(null);
 
   const build = (selection: WorkItem[], opts: ItemMenuOptions = {}): MenuItem[] => {
     if (!selection.length) return [];
@@ -81,7 +82,8 @@ export function useItemMenu() {
           icon: 'chevronDown',
           disabled: !others.length,
           onClick: async () => {
-            for (const w of [...selection].sort((a, b) => a.stackRank - b.stackRank)) await api.moveWorkItem(w.id, { afterId: others[others.length - 1].id });
+            // Each goes straight after the last item, so place them last-first to keep their order.
+            for (const w of [...selection].sort((a, b) => b.stackRank - a.stackRank)) await api.moveWorkItem(w.id, { afterId: others[others.length - 1].id });
           },
         },
       );
@@ -135,6 +137,15 @@ export function useItemMenu() {
     if (parentTypes.length) {
       menu.push({ label: 'Change parent…', icon: 'link', onClick: () => setParentFor(selection) });
     }
+    const tags = [...new Map(selection.flatMap((w) => w.tags).map((t) => [t.toLowerCase(), t])).values()].sort((a, b) => a.localeCompare(b));
+    menu.push({ label: 'Add tags…', icon: 'add', onClick: () => setTagsFor(selection) });
+    if (tags.length) {
+      menu.push({
+        label: 'Remove tag',
+        icon: 'close',
+        submenu: tags.map((t) => ({ label: t, onClick: () => api.bulkUpdate(ids, {}, { removeTags: [t] }) })),
+      });
+    }
     menu.push({ divider: true });
     if (single) {
       menu.push({
@@ -175,7 +186,12 @@ export function useItemMenu() {
     toast(`Moved ${ids.length === 1 ? `#${ids[0]}` : `${ids.length} items`} to ${name}`, 'success');
   };
 
-  const element = parentFor && <ChangeParentModal items={parentFor} onClose={() => setParentFor(null)} />;
+  const element = (
+    <>
+      {parentFor && <ChangeParentModal items={parentFor} onClose={() => setParentFor(null)} />}
+      {tagsFor && <AddTagsModal items={tagsFor} onClose={() => setTagsFor(null)} />}
+    </>
+  );
   return { build, element, moveTo };
 }
 
@@ -213,6 +229,51 @@ function ChangeParentModal({ items, onClose }: { items: WorkItem[]; onClose: () 
           Remove parent
         </button>
       </div>
+    </Modal>
+  );
+}
+
+function AddTagsModal({ items, onClose }: { items: WorkItem[]; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const all = useStore((s) => s.workItems);
+  const known = useMemo(() => [...new Set(all.flatMap((w) => w.tags))].sort((a, b) => a.localeCompare(b)), [all]);
+  const tags = text
+    .split(/[,;]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const name = items.length === 1 ? `#${items[0].id}` : `${items.length} items`;
+  const apply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tags.length) return;
+    await api.bulkUpdate(
+      items.map((w) => w.id),
+      {},
+      { addTags: tags },
+    );
+    toast(`Tagged ${name}`, 'success');
+    onClose();
+  };
+  return (
+    <Modal title={`Add tags to ${name}`} onClose={onClose} width={420}>
+      <form onSubmit={apply} className="form">
+        <label>
+          Tags, separated by commas
+          <input autoFocus list="known-tags" value={text} onChange={(e) => setText(e.target.value)} aria-label="Tags to add" />
+          <datalist id="known-tags">
+            {known.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+        </label>
+        <div className="row gap">
+          <button className="btn btn-primary" type="submit" disabled={!tags.length}>
+            Add tags
+          </button>
+          <button className="btn" type="button" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }
