@@ -69,15 +69,16 @@ site_ok() { curl -fsS -m 20 -o /dev/null "https://$1/api/health"; }
 # ---- 1. backups ------------------------------------------------------------------------------
 backup_app() { # name dir
   local out file
-  # Owner-only archives (they hold password hashes and secrets), whatever each app's script does.
-  # Scoped to this subshell: git pulls and image builds elsewhere need the normal umask.
+  # Archives hold password hashes and secrets: make the ones already there owner-only first (best
+  # effort, and whether or not tonight's backup works), then back up under umask 077, whatever
+  # each app's script does. The umask is scoped to that subshell: git pulls and image builds
+  # elsewhere need the normal one.
+  chmod 700 "$HOME/$1-backups" 2>/dev/null || true
+  find "$HOME/$1-backups" -maxdepth 1 -name "$1-*.tar.gz*" -type f -exec chmod 600 {} + 2>/dev/null || true
   if ! out=$(cd "$2" && umask 077 && KEEP="${KEEP_ARCHIVES:-14}" deploy/backup.sh 2>&1); then
     problem "$1: the nightly backup failed: $(echo "$out" | tail -2 | tr '\n' ' ')"
     return
   fi
-  # Also tighten archives written before this was in place (best effort, like deploy/backup.sh).
-  chmod 700 "$HOME/$1-backups" 2>/dev/null || true
-  find "$HOME/$1-backups" -maxdepth 1 -name "$1-*.tar.gz*" -type f -exec chmod 600 {} + 2>/dev/null || true
   file=$(ls -1t "$HOME/$1-backups/$1"-*.tar.gz 2>/dev/null | head -1)
   if [ -z "$file" ] || ! gzip -t "$file" 2>/dev/null; then
     problem "$1: the newest backup archive is missing or damaged ($file)"
