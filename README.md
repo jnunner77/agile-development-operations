@@ -99,11 +99,11 @@ docker compose up -d --build
 Off by default, so the app works as before with a "who am I" picker. To turn it on:
 
 1. In **Project settings → Team members**, give each person a **username**.
-2. In **Project settings → Authentication**, tick **Administrator** for at least one of them,
-   then tick **Require people to sign in** and save.
-3. Everyone signs in with their username. The first time, they leave the password blank and
-   choose one. Until they do, anyone who types that username can set it, so tell people promptly
-   (or have an administrator set a temporary password for them).
+2. In **Project settings → Authentication**, tick **Administrator** for at least one of them and
+   give them a password (**Set password…**), then tick **Require people to sign in** and save.
+3. Give everyone else a temporary password with **Set password…** and tell them what it is. They
+   sign in with their username and that password, then choose their own. Nobody can set the first
+   password of an account themselves, so an account without a password can't be signed in to.
 
 - **Passwords** are stored as salted scrypt hashes in `DATA_DIR/auth.json`, never in plain text and
   never sent to browsers, snapshots or backup exports. They must be at least 8 characters.
@@ -113,7 +113,7 @@ Off by default, so the app works as before with a "who am I" picker. To turn it 
   (configurable, 5 minutes to 7 days). Restarting the server signs everyone out.
 - **Lockout**: 5 wrong passwords lock that username for 5 minutes.
 - **Administrators** can change these settings, set a temporary or permanent password for anyone,
-  reset a password (the person chooses a new one at next sign-in), make others administrators,
+  reset a password (the person can't sign in until an administrator sets a new one), make others administrators,
   and are the only ones who can change team members, project settings, restore snapshots, import
   backups or reset data. The app never lets you remove the last administrator who can sign in.
 - **Locked out?** Start the server with `AUTH_DISABLED=1`, fix the accounts in Project settings,

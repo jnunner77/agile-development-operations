@@ -38,7 +38,8 @@ async function enableSignIn(app: ReturnType<typeof build>['app']) {
   const res = await request(app).post('/api/members').send({ name: 'Ada', username: 'ada' });
   const id = res.body.result.id as string;
   await request(app).patch(`/api/auth/accounts/${id}`).send({ isAdmin: true });
-  await request(app).put('/api/auth/settings').send({ enabled: true });
+  await request(app).post(`/api/auth/accounts/${id}/password`).send({ password: 'correct horse', mustChange: false });
+  expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
 }
 
 describe('token bucket', () => {
@@ -209,8 +210,7 @@ describe('sessions', () => {
     const { app } = build();
     await enableSignIn(app);
     const agent = request.agent(app);
-    await agent.post('/api/auth/login').send({ username: 'ada' });
-    expect((await agent.post('/api/auth/password').send({ username: 'ada', newPassword: 'correct horse' })).status).toBe(200);
+    expect((await agent.post('/api/auth/login').send({ username: 'ada', password: 'correct horse' })).body.status).toBe('ok');
     for (let h = 0; h < 23; h++) {
       clock += 60 * 60_000;
       expect((await agent.get('/api/bootstrap')).status).toBe(200);

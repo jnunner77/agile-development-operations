@@ -56,7 +56,10 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
   const daysValid = !expires || (Number.isInteger(days) && days >= 1 && days <= EXPIRY_DAYS_MAX);
   const minutesValid = Number.isInteger(minutes) && minutes >= SESSION_TIMEOUT_MIN && minutes <= SESSION_TIMEOUT_MAX;
   const dirty = enabled !== view.settings.enabled || days !== view.settings.passwordExpiryDays || minutes !== view.settings.sessionTimeoutMinutes;
-  const readyAdmins = members.filter((m) => m.active && m.username && view.accounts.find((a) => a.memberId === m.id)?.isAdmin);
+  const readyAdmins = members.filter((m) => {
+    const a = view.accounts.find((x) => x.memberId === m.id);
+    return m.active && m.username && a?.isAdmin && a.hasPassword;
+  });
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +67,7 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
       const ok = await confirmDialog({
         title: 'Turn on sign-in?',
         message:
-          'Everyone will need to sign in with the username from Team members. People without a password choose one the first time they sign in, so let them know right away. Team members without a username won’t be able to sign in.',
+          'Everyone will need to sign in with the username from Team members. People without a password can’t sign in until you set a temporary password for them (Set password… below). Team members without a username won’t be able to sign in.',
         confirmLabel: 'Turn on sign-in',
       });
       if (!ok) return;
@@ -94,7 +97,7 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
       </label>
       <div className="muted small">
         People sign in with the username set in <Link to="/settings/team">Team members</Link>. With sign-in off, anyone can pick who they're acting as.
-        {enabled && !readyAdmins.length && ' Before turning it on, make at least one active team member with a username an administrator below.'}
+        {enabled && !readyAdmins.length && ' Before turning it on, make at least one active team member with a username an administrator below and give them a password (Set password…).'}
       </div>
       <fieldset>
         <legend>Password expiry</legend>
@@ -140,7 +143,7 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
 
 function passwordStatus(a: AccountSummary | undefined, m: Member) {
   if (!m.username) return <span className="muted">No username — can't sign in</span>;
-  if (!a?.hasPassword) return <span className="muted">Not set — chosen at first sign-in</span>;
+  if (!a?.hasPassword) return <span className="muted">Not set — can't sign in yet</span>;
   if (a.lockedUntil) return <span className="text-danger">Locked until {formatDateTime(a.lockedUntil)}</span>;
   if (a.mustChange) return <span className="text-warn">Temporary — must change at sign-in</span>;
   if (a.expired) return <span className="text-danger">Expired</span>;
@@ -166,11 +169,11 @@ function AccountsCard({ view, onChange }: { view: AuthAdminView; onChange: (v: A
   const reset = async (m: Member) => {
     const ok = await confirmDialog({
       title: `Reset ${m.name}'s password?`,
-      message: `Their current password stops working and they're signed out. They'll choose a new password the next time they sign in as "${m.username}". Until they do, anyone who enters that username can set it, so tell them promptly — or set a temporary password instead.`,
+      message: `Their current password stops working and they're signed out everywhere. They can't sign in again until you set a new (temporary) password for them with Set password….`,
       confirmLabel: 'Reset password',
       danger: true,
     });
-    if (ok) await act(() => authApi.resetPassword(m.id), `${m.name} will choose a new password at next sign-in`);
+    if (ok) await act(() => authApi.resetPassword(m.id), `${m.name}'s password was reset`);
   };
 
   return (

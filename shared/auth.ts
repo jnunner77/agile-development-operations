@@ -43,12 +43,10 @@ export interface AuthStatus {
 /**
  * Result of a sign-in attempt.
  * - ok: signed in.
- * - setup: the account has no password yet; the user must choose one.
  * - change: the password is expired or temporary and must be replaced.
  */
 export type LoginResult =
   | { status: 'ok'; user: AuthUser }
-  | { status: 'setup' }
   | { status: 'change'; reason: 'expired' | 'temporary' };
 
 /** What administrators see about each team member's sign-in account. Never includes the password. */

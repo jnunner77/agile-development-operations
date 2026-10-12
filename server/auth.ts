@@ -173,14 +173,15 @@ export class AuthManager {
     return at != null && this.now() >= at;
   }
 
+  /** An administrator who can actually sign in: active, with a username and a password. */
   private hasUsableAdmin(members: Member[], accounts: Record<string, Account> = this.data.accounts) {
-    return members.some((m) => m.active && !!m.username && !!accounts[m.id]?.isAdmin);
+    return members.some((m) => m.active && !!m.username && !!accounts[m.id]?.isAdmin && !!accounts[m.id]?.passwordHash);
   }
 
-  /** Store guard: with sign-in on, some active administrator with a username must always remain. */
+  /** Store guard: with sign-in on, some administrator who can sign in must always remain. */
   private checkDatabase(db: Database) {
     if (this.enabled && !this.hasUsableAdmin(db.members)) {
-      throw badRequest('Sign-in is turned on, so at least one active administrator with a username must remain. Make someone else an administrator first, or turn sign-in off.');
+      throw badRequest('Sign-in is turned on, so at least one active administrator with a username and a password must remain. Make someone else an administrator first, or turn sign-in off.');
     }
   }
 
@@ -313,13 +314,14 @@ export class AuthManager {
     const key = username.trim().toLowerCase();
     this.assertNotLocked(key);
     const member = this.findMember(username);
-    if (!member) {
+    const account = member && this.account(member.id);
+    // An account without a password can't be signed in to (an administrator sets the first
+    // one); it answers exactly like an unknown username.
+    if (!member || !account?.passwordHash) {
       await verifyPassword(pw, await getDummyHash());
       this.recordFailure(key);
       throw invalidLogin();
     }
-    const account = this.account(member.id);
-    if (!account.passwordHash) return { result: { status: 'setup' } };
     if (!(await verifyPassword(pw, account.passwordHash))) {
       this.recordFailure(key);
       throw invalidLogin();
@@ -331,30 +333,29 @@ export class AuthManager {
   }
 
   /**
-   * Set a new password and sign in. Covers first-time setup (no password yet, so no
-   * current password is needed), expired and temporary passwords, and voluntary changes.
+   * Set a new password and sign in: expired and temporary passwords, and voluntary changes.
+   * The current password is always needed. Nobody can choose the first password of an
+   * account that has none; an administrator sets it (usually as a temporary password).
    */
   async changePassword(username: string, currentPassword: string | undefined, newPassword: string): Promise<{ user: AuthUser; token: string }> {
     if (!this.enabled) throw badRequest('Sign-in is not turned on');
     const key = username.trim().toLowerCase();
     this.assertNotLocked(key);
     const member = this.findMember(username);
-    if (!member) {
-      await verifyPassword(newPassword, await getDummyHash());
+    const before = member ? this.account(member.id).passwordHash : null;
+    if (!member || !before) {
+      await verifyPassword(currentPassword ?? '', await getDummyHash());
       this.recordFailure(key);
       throw invalidLogin();
     }
     this.validateNewPassword(newPassword, member);
-    const before = this.account(member.id).passwordHash;
-    if (before) {
-      if (!currentPassword || !(await verifyPassword(currentPassword, before))) {
-        this.recordFailure(key);
-        throw new HttpError(401, 'Current password is incorrect');
-      }
-      if (await verifyPassword(newPassword, before)) throw badRequest('Choose a password different from the current one');
+    if (!currentPassword || !(await verifyPassword(currentPassword, before))) {
+      this.recordFailure(key);
+      throw new HttpError(401, 'Current password is incorrect');
     }
+    if (await verifyPassword(newPassword, before)) throw badRequest('Choose a password different from the current one');
     const hash = await hashPassword(newPassword);
-    // Another request may have set the password while we were hashing (e.g. two first-time setups).
+    // Another request may have changed the password while we were hashing.
     const account = this.account(member.id);
     if (account.passwordHash !== before) throw new HttpError(409, 'The password was just changed. Sign in again.');
     this.failures.delete(key);
@@ -374,7 +375,7 @@ export class AuthManager {
   updateSettings(patch: z.infer<typeof authSettingsSchema>) {
     const next = { ...this.data.settings, ...patch };
     if (next.enabled && !this.overridden && !this.hasUsableAdmin(this.store.db.members)) {
-      throw badRequest('Before turning on sign-in, make at least one active team member with a username an administrator.');
+      throw badRequest('Before turning on sign-in, make at least one active team member with a username an administrator and give them a password (Set password…).');
     }
     this.data.settings = next;
     this.save();
@@ -384,7 +385,7 @@ export class AuthManager {
     this.member(memberId);
     const account = { ...this.account(memberId), isAdmin };
     if (this.enabled && !this.hasUsableAdmin(this.store.db.members, { ...this.data.accounts, [memberId]: account })) {
-      throw badRequest('At least one active administrator with a username must remain while sign-in is on.');
+      throw badRequest('At least one active administrator with a username and a password must remain while sign-in is on.');
     }
     this.putAccount(memberId, account);
   }
@@ -399,10 +400,14 @@ export class AuthManager {
     this.revokeSessions(memberId);
   }
 
-  /** Clear someone's password so they choose a new one the next time they sign in. */
+  /** Clear someone's password: they can't sign in until an administrator sets a new one. */
   resetPassword(memberId: string) {
     const member = this.member(memberId);
-    this.putAccount(memberId, { ...this.account(memberId), passwordHash: null, passwordSetAt: null, mustChange: false });
+    const account = { ...this.account(memberId), passwordHash: null, passwordSetAt: null, mustChange: false };
+    if (this.enabled && !this.hasUsableAdmin(this.store.db.members, { ...this.data.accounts, [memberId]: account })) {
+      throw badRequest('At least one active administrator with a username and a password must remain while sign-in is on.');
+    }
+    this.putAccount(memberId, account);
     if (member.username) this.failures.delete(member.username.toLowerCase());
     this.revokeSessions(memberId);
   }
