@@ -52,6 +52,21 @@ describe('store', () => {
     expect(sent).toHaveBeenCalledTimes(1);
   });
 
+  it('removes the half-written temp file when the final rename fails', () => {
+    addTask('Saved');
+    const version = store.db.version;
+    const sent = vi.fn();
+    store.subscribe(sent);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('EIO: i/o error, rename'), { code: 'EIO' });
+    });
+    expect(() => addTask('Lost')).toThrow(/EIO/);
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    expect(store.db.version).toBe(version);
+    expect(onDisk().workItems).toHaveLength(1);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
   it('leaves everything alone when a replacement cannot be saved', () => {
     addTask('Current');
     const version = store.db.version;
