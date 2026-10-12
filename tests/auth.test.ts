@@ -99,6 +99,25 @@ describe('sign-in', () => {
     expect((await request(app).post('/api/auth/password').send({ username: 'ada', newPassword: 'taken over!' })).status).toBe(401);
   });
 
+  it("never lets anyone claim an administrator's account that has no password", async () => {
+    await setup();
+    const admin = await signIn('ada');
+    const dee = (await admin.post('/api/members').send({ name: 'Dee Admin', username: 'dee' })).body.result as { id: string };
+    expect((await admin.patch(`/api/auth/accounts/${dee.id}`).send({ isAdmin: true })).status).toBe(200);
+    const unknown = await request(app).post('/api/auth/login').send({ username: 'nobody', password: 'anything 1' });
+    for (const body of [{ username: 'dee' }, { username: 'dee', password: 'anything 1' }]) {
+      const res = await request(app).post('/api/auth/login').send(body);
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unknown.body);
+      expect(res.headers['set-cookie']).toBeUndefined();
+    }
+    const claim = await request(app).post('/api/auth/password').send({ username: 'dee', newPassword: 'taken over!' });
+    expect(claim.status).toBe(401);
+    expect(claim.body).toEqual(unknown.body);
+    expect(claim.headers['set-cookie']).toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'auth.json'), 'utf8')).accounts[dee.id].passwordHash).toBeNull();
+  });
+
   it('never lets anyone choose the first password of an account', async () => {
     await setup();
     const admin = await signIn('ada');

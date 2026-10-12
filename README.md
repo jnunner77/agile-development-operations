@@ -117,7 +117,9 @@ Off by default, so the app works as before with a "who am I" picker. To turn it 
   and are the only ones who can change team members, project settings, restore snapshots, import
   backups or reset data. The app never lets you remove the last administrator who can sign in.
 - **Locked out?** Start the server with `AUTH_DISABLED=1`, fix the accounts in Project settings,
-  then restart without it.
+  then restart without it. This is also the way back in if sign-in is on and no administrator has a
+  password (team member changes, restores and imports are then refused): set one under
+  **Authentication → Set password…** while sign-in is forced off.
 
 Use HTTPS (for example behind a reverse proxy) if the app is reachable beyond your own machine;
 otherwise passwords travel over the network unencrypted.
