@@ -197,6 +197,21 @@ describe('API tokens', () => {
     expect(stored.map((x) => x.memberId)).toEqual([claude.id]);
   });
 
+  it('count only unexpired tokens toward the limit, and drop expired ones after 30 days', async () => {
+    const m = await member('Claude');
+    for (let i = 0; i < 20; i++) await token(m.id, 'read', 1);
+    expect((await request(app).post('/api/auth/tokens').send({ name: 'x', memberId: m.id })).status).toBe(400);
+    clock += 2 * DAY; // all 20 have expired
+    const fresh = await token(m.id, 'read', 90);
+    let list = (await request(app).get('/api/auth/tokens')).body as { id: string; expired: boolean }[];
+    expect(list).toHaveLength(21);
+    expect(list.filter((t) => t.expired)).toHaveLength(20);
+    clock += 30 * DAY; // the expired ones are now more than 30 days past expiry
+    list = (await request(app).get('/api/auth/tokens')).body;
+    expect(list.map((t) => t.id)).toEqual([fresh.info.id]);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'api-tokens.json'), 'utf8')).tokens).toHaveLength(1);
+  });
+
   it('validate expiry limits', async () => {
     const m = await member('Claude');
     const res = await request(app).post('/api/auth/tokens').send({ name: 'x', memberId: m.id, expiresInDays: 400 });
