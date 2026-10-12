@@ -206,5 +206,40 @@ await page.locator('tr', { hasText: 'Before restoring "E2E baseline"' }).waitFor
 assert.equal((await db()).workItems.length, before);
 
 assert.deepEqual(errors, [], 'browser errors');
+
+// Last, because it turns sign-in on (and back off, so other smoke tests can use the server).
+// Its own page: requests refused while signed out are expected here, so only page errors count.
+step('turning sign-in on lists API tokens and revokes them');
+const json = { 'Content-Type': 'application/json' };
+const send = async (method, path, body, headers = {}) =>
+  fetch(base + '/api' + path, { method, headers: { ...json, ...headers }, body: body && JSON.stringify(body) });
+const team = (await db()).members;
+const admin = team.find((m) => m.username === 'alex');
+const tokenOwner = team.find((m) => m.username === 'priya');
+await send('PATCH', `/auth/accounts/${admin.id}`, { isAdmin: true });
+await send('POST', `/auth/accounts/${admin.id}/password`, { password: 'smoke test password', mustChange: false });
+const { token: secret } = await (await send('POST', '/auth/tokens', { name: 'E2E token', memberId: tokenOwner.id, scope: 'read' })).json();
+assert.equal((await send('GET', '/bootstrap', undefined, { Authorization: `Bearer ${secret}` })).status, 200);
+const auth = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const authErrors = [];
+auth.on('pageerror', (e) => authErrors.push(e.message));
+await auth.goto(base + '/settings/authentication');
+await auth.getByLabel('Require people to sign in').check();
+await auth.getByRole('button', { name: 'Save' }).click();
+const confirm = auth.getByRole('dialog');
+await confirm.getByText('E2E token').waitFor();
+assert.ok(await confirm.getByRole('checkbox').isChecked(), 'revoking is ticked by default');
+await confirm.getByRole('button', { name: 'Turn on sign-in' }).click();
+await auth.getByRole('heading', { name: 'Sign in' }).waitFor();
+assert.equal((await send('GET', '/bootstrap', undefined, { Authorization: `Bearer ${secret}` })).status, 401, 'token revoked');
+await auth.getByLabel('Username').fill('alex');
+await auth.getByLabel('Password').fill('smoke test password');
+await auth.getByRole('button', { name: 'Sign in' }).click();
+await auth.getByRole('heading', { name: 'Sign in' }).waitFor({ state: 'detached' });
+const off = await auth.evaluate(async () => (await fetch('/api/auth/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"enabled":false}' })).status);
+assert.equal(off, 200, 'sign-in turned back off');
+assert.deepEqual(authErrors, [], 'page errors while turning sign-in on');
+await auth.close();
+
 await browser.close();
 console.log('E2E smoke test passed');

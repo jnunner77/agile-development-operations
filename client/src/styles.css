@@ -2480,6 +2480,23 @@ tr.selected .row-more {
   background: var(--danger-soft);
   color: var(--danger);
 }
+/* A callout holding several blocks (text, a list, a checkbox), one under another. */
+.callout-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.callout-stack p,
+.callout-stack ul {
+  margin: 0;
+}
+.callout-stack ul {
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+.callout-stack .check-row {
+  padding: 0;
+  white-space: normal;
+}
 .text-danger {
   color: var(--danger);
 }

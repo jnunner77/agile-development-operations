@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EXPIRY_DAYS_MAX, SESSION_TIMEOUT_MAX, SESSION_TIMEOUT_MIN, type AccountSummary, type AuthAdminView } from '../../../shared/auth';
+import { EXPIRY_DAYS_MAX, SESSION_TIMEOUT_MAX, SESSION_TIMEOUT_MIN, type AccountSummary, type ApiTokenInfo, type AuthAdminView } from '../../../shared/auth';
 import type { Member } from '../../../shared/types';
-import { authApi, requireSignIn } from '../api';
+import { authApi, requireSignIn, tokensApi } from '../api';
 import { Avatar, Modal, confirmDialog } from '../components/common';
 import { Icon } from '../components/Icon';
 import { formatDateTime } from '../lib/format';
@@ -63,17 +63,59 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    // API tokens made while sign-in was off could have been made by anyone: list all tokens and
+    // offer to revoke them (ticked by default) before turning sign-in on.
+    let revoke: ApiTokenInfo[] = [];
     if (enabled && !view.settings.enabled) {
+      // The server refuses this too; checking first means no token is revoked for a turn-on that fails.
+      if (!readyAdmins.length) {
+        return toast('Before turning on sign-in, make at least one active team member with a username an administrator and give them a password (Set password…).', 'error');
+      }
+      let tokens: ApiTokenInfo[] = [];
+      try {
+        tokens = (await tokensApi.list()).filter((t) => !t.expired);
+      } catch (err) {
+        return toast(errorText(err), 'error');
+      }
+      let revokeTokens = true;
+      const name = (id: string) => members.find((m) => m.id === id)?.name ?? 'Former team member';
       const ok = await confirmDialog({
         title: 'Turn on sign-in?',
-        message:
-          'Everyone will need to sign in with the username from Team members. People without a password can’t sign in until you set a temporary password for them (Set password… below). Team members without a username won’t be able to sign in.',
+        message: (
+          <>
+            <p>
+              Everyone will need to sign in with the username from Team members. People without a password can’t sign in until you set a temporary password for them (Set password… below).
+              Team members without a username won’t be able to sign in.
+            </p>
+            {tokens.length > 0 && (
+              <div className="callout callout-warn callout-stack">
+                <p>
+                  <Icon name="warning" size={14} /> {tokens.length === 1 ? 'This API token keeps' : `These ${tokens.length} API tokens keep`} working after sign-in is on. Any made while sign-in was off could have been made by anyone:
+                </p>
+                <ul>
+                  {tokens.map((t) => (
+                    <li key={t.id}>
+                      <strong>{t.name}</strong> ({t.scope === 'write' ? 'read & write' : 'read-only'}) acts as {name(t.memberId)}, created by {t.createdBy} {formatDateTime(t.createdAt)}
+                    </li>
+                  ))}
+                </ul>
+                <label className="check-row">
+                  <input type="checkbox" defaultChecked onChange={(e) => (revokeTokens = e.target.checked)} /> Revoke {tokens.length === 1 ? 'it' : 'them'} (untick only if you know who made {tokens.length === 1 ? 'it' : 'them'})
+                </label>
+              </div>
+            )}
+          </>
+        ),
         confirmLabel: 'Turn on sign-in',
       });
       if (!ok) return;
+      if (revokeTokens) revoke = tokens;
     }
     setBusy(true);
     try {
+      // Revoke first: once sign-in is on, this page needs a session to do it.
+      for (const t of revoke) await tokensApi.revoke(t.id);
+      if (revoke.length) toast(`Revoked ${revoke.length} API token${revoke.length === 1 ? '' : 's'}`, 'success');
       onChange(await authApi.updateSettings({ enabled, passwordExpiryDays: days, sessionTimeoutMinutes: minutes }));
       toast('Authentication settings saved', 'success');
       await refreshStatus();
@@ -169,7 +211,7 @@ function AccountsCard({ view, onChange }: { view: AuthAdminView; onChange: (v: A
   const reset = async (m: Member) => {
     const ok = await confirmDialog({
       title: `Reset ${m.name}'s password?`,
-      message: `Their current password stops working and they're signed out everywhere. They can't sign in again until you set a new (temporary) password for them with Set password….`,
+      message: `Their current password stops working, they're signed out everywhere and their API tokens are revoked. They can't sign in again until you set a new (temporary) password for them with Set password….`,
       confirmLabel: 'Reset password',
       danger: true,
     });
@@ -271,7 +313,7 @@ function SetPasswordDialog({ member, onClose, onSave }: { member: Member; onClos
     <Modal title={`Set password for ${member.name}`} onClose={onClose} width={420}>
       <form className="form" onSubmit={submit}>
         <p className="muted small">
-          Username: <strong>{member.username}</strong>. They'll be signed out everywhere.
+          Username: <strong>{member.username}</strong>. They'll be signed out everywhere and their API tokens revoked.
         </p>
         <label>
           New password

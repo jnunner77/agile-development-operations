@@ -398,7 +398,10 @@ export class AuthManager {
     const hash = await hashPassword(pw);
     this.putAccount(memberId, { ...this.account(memberId), passwordHash: hash, passwordSetAt: new Date(this.now()).toISOString(), mustChange });
     this.failures.delete(member.username.toLowerCase());
+    // An administrator setting someone's password is how a compromised account is taken
+    // back, so it ends everything that acts as them: sessions and API tokens.
     this.revokeSessions(memberId);
+    this.tokens.revokeAll(memberId);
   }
 
   /** Clear someone's password: they can't sign in until an administrator sets a new one. */
@@ -411,6 +414,7 @@ export class AuthManager {
     this.putAccount(memberId, account);
     if (member.username) this.failures.delete(member.username.toLowerCase());
     this.revokeSessions(memberId);
+    this.tokens.revokeAll(memberId);
   }
 
   // ---- Express glue ----

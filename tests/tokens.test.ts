@@ -120,9 +120,9 @@ describe('API tokens', () => {
   it('can never administer the project or mint more tokens', async () => {
     const ada = await member('Ada Admin', 'ada');
     await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+    await request(app).post(`/api/auth/accounts/${ada.id}/password`).send({ password: 'correct horse', mustChange: false });
     // Even a token acting as an administrator.
     const { token: secret } = await token(ada.id);
-    await request(app).post(`/api/auth/accounts/${ada.id}/password`).send({ password: 'correct horse', mustChange: false });
     expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
     for (const [method, url] of [
       ['get', '/api/auth/admin'],
@@ -174,6 +174,27 @@ describe('API tokens', () => {
     expect((await adaAgent.delete(`/api/auth/tokens/${claudes.id}`)).status).toBe(204);
     expect((await adaAgent.post('/api/auth/tokens').send({ name: 'for bo', memberId: bo.id, scope: 'write' })).status).toBe(201);
     expect(ada.id).toBeTruthy();
+  });
+
+  it('stop working when an administrator sets or resets the member\'s password', async () => {
+    const { bo, claude, t: claudeToken } = await setup();
+    const admin = await signIn('ada');
+    const mint = async () => (await admin.post('/api/auth/tokens').send({ name: 'bo script', memberId: bo.id, scope: 'write' })).body.token as string;
+    const works = async (secret: string) => (await request(app).get('/api/bootstrap').set(bearer(secret))).status;
+
+    const first = await mint();
+    expect(await works(first)).toBe(200);
+    expect((await admin.post(`/api/auth/accounts/${bo.id}/reset`)).status).toBe(200);
+    expect(await works(first)).toBe(401);
+
+    const second = await mint();
+    expect((await admin.post(`/api/auth/accounts/${bo.id}/password`).send({ password: 'temporary 1' })).status).toBe(200);
+    expect(await works(second)).toBe(401);
+
+    // Other members' tokens are untouched, and the revocation is saved.
+    expect(await works(claudeToken.token)).toBe(200);
+    const stored = JSON.parse(fs.readFileSync(path.join(dir, 'api-tokens.json'), 'utf8')).tokens as { memberId: string }[];
+    expect(stored.map((x) => x.memberId)).toEqual([claude.id]);
   });
 
   it('validate expiry limits', async () => {
