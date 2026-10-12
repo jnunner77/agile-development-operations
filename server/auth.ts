@@ -428,7 +428,7 @@ export class AuthManager {
     if (!this.enabled) return next();
     if (member) req.headers['x-user'] = encodeURIComponent(member.id);
     else delete req.headers['x-user'];
-    if (PUBLIC_PATHS.has(req.path)) return next();
+    if (PUBLIC_PATHS.has(req.path.toLowerCase())) return next();
     if (!member) return res.status(401).json({ error: 'Please sign in', code: 'signin' });
     next();
   };

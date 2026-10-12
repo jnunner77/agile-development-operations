@@ -38,7 +38,8 @@ async function enableSignIn(app: ReturnType<typeof build>['app']) {
   const res = await request(app).post('/api/members').send({ name: 'Ada', username: 'ada' });
   const id = res.body.result.id as string;
   await request(app).patch(`/api/auth/accounts/${id}`).send({ isAdmin: true });
-  await request(app).put('/api/auth/settings').send({ enabled: true });
+  await request(app).post(`/api/auth/accounts/${id}/password`).send({ password: 'correct horse', mustChange: false });
+  expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
 }
 
 describe('token bucket', () => {
@@ -133,8 +134,13 @@ describe('temporary bans', () => {
   it('counts failed sign-ins however the path is spelled', async () => {
     const { app } = build({ signIn: { burst: 100, perMinute: 100 }, ban: { authFailures: 4, violations: 1000, notFound: 1000, windowMs: 60_000, durationMs: 10 * 60_000 } });
     await enableSignIn(app);
+    // The sign-in route itself answers at any spelling of the path.
+    const ok = await request(app).post('/api/Auth/Login').set(from('9.9.9.7')).send({ username: 'ada', password: 'correct horse' });
+    expect(ok.body.status).toBe('ok');
     for (const url of ['/api/AUTH/login', '/api/Auth/Login', '/api/auth/LOGIN', '/API/auth/login']) {
-      expect((await request(app).post(url).set(from('9.9.9.8')).send({ username: 'nobody', password: 'nope nope' })).status, url).toBe(401);
+      const res = await request(app).post(url).set(from('9.9.9.8')).send({ username: 'ada', password: 'wrong password' });
+      expect(res.status, url).toBe(401);
+      expect(res.body.error, url).toBe('Incorrect username or password');
     }
     expect((await request(app).get('/api/auth/status').set(from('9.9.9.8'))).status).toBe(403);
   });
@@ -218,8 +224,7 @@ describe('sessions', () => {
     const { app } = build();
     await enableSignIn(app);
     const agent = request.agent(app);
-    await agent.post('/api/auth/login').send({ username: 'ada' });
-    expect((await agent.post('/api/auth/password').send({ username: 'ada', newPassword: 'correct horse' })).status).toBe(200);
+    expect((await agent.post('/api/auth/login').send({ username: 'ada', password: 'correct horse' })).body.status).toBe('ok');
     for (let h = 0; h < 23; h++) {
       clock += 60 * 60_000;
       expect((await agent.get('/api/bootstrap')).status).toBe(200);
