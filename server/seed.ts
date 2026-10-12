@@ -334,8 +334,8 @@ export function buildDemoDatabase(today: string = todayLocal()): Database {
     { id: randomUUID(), sourceId: invoices.id, targetId: offlineSync.id, type: 'Predecessor', comment: '', createdBy: priya.name, createdAt: clamp(at(s3.startDate!)) },
   );
   profile.comments.push(
-    { id: randomUUID(), author: sofia.name, text: p('Should the email change flow block saving other fields until verified?'), createdAt: clamp(at(elapsed[0] ?? s3.startDate!, 11)), editedAt: null },
-    { id: randomUUID(), author: alex.name, text: p('No - save the other fields right away and show a pending banner for the email. Updated the acceptance criteria.'), createdAt: clamp(at(elapsed[1] ?? s3.startDate!, 9)), editedAt: null },
+    { id: randomUUID(), author: sofia.name, authorId: sofia.id, text: p('Should the email change flow block saving other fields until verified?'), createdAt: clamp(at(elapsed[0] ?? s3.startDate!, 11)), editedAt: null },
+    { id: randomUUID(), author: alex.name, authorId: alex.id, text: p('No - save the other fields right away and show a pending banner for the email. Updated the acceptance criteria.'), createdAt: clamp(at(elapsed[1] ?? s3.startDate!, 9)), editedAt: null },
   );
   invoices.hyperlinks.push({ id: randomUUID(), url: 'https://example.com/design/invoice-template', comment: 'Approved invoice template', addedBy: priya.name, addedAt: clamp(at(s3.startDate!)) });
 

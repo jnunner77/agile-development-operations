@@ -49,6 +49,8 @@ export interface SprintCapacity {
 export interface Comment {
   id: string;
   author: string;
+  /** Team member who wrote it; missing on comments from before this was recorded. */
+  authorId?: string | null;
   text: string;
   createdAt: Timestamp;
   editedAt: Timestamp | null;
