@@ -130,6 +130,27 @@ describe('work items', () => {
     expect(item(b.id).tags).toEqual(['Urgent', 'Q3']);
   });
 
+  it('applies the work item tag limits to bulk tag changes', async () => {
+    const a = await create('Product Backlog Item', { tags: ['Web'] });
+    const bulk = (body: object) => request(app).post('/api/workitems/bulk').send({ ids: [a.id], changes: {}, ...body });
+    expect((await bulk({ addTags: ['y'.repeat(101)] })).status).toBe(400);
+    expect((await bulk({ addTags: Array.from({ length: 101 }, (_, i) => `t${i}`) })).status).toBe(400);
+    expect((await bulk({ removeTags: ['y'.repeat(101)] })).status).toBe(400);
+    // The item may not end up with more than 100 tags, counting the ones it has.
+    const tooMany = await bulk({ addTags: Array.from({ length: 100 }, (_, i) => `t${i}`) });
+    expect(tooMany.status).toBe(400);
+    expect(tooMany.body.error).toMatch(/more than 100 tags/);
+    expect(item(a.id).tags).toEqual(['Web']);
+    expect((await bulk({ addTags: Array.from({ length: 99 }, (_, i) => `t${i}`) })).status).toBe(200);
+    expect(item(a.id).tags).toHaveLength(100);
+  });
+
+  it('treats a malformed X-User header like a missing one', async () => {
+    const res = await request(app).post('/api/workitems').set('X-User', '%E0%A4%A').send({ type: 'Task', title: 'Who?' });
+    expect(res.status).toBe(201);
+    expect(res.body.result.createdBy).toBe('Anonymous');
+  });
+
   it('reorders by stack rank relative to neighbours', async () => {
     const a = await create('Product Backlog Item');
     const b = await create('Product Backlog Item');

@@ -19,6 +19,8 @@ import type { Tx } from './store';
 const RANK_GAP = 1000;
 
 const num = z.number().finite().min(0).max(1_000_000).nullable();
+const MAX_TAGS = 100;
+const tag = z.string().trim().min(1).max(100);
 const html = z.string().max(500_000);
 const date = z
   .string()
@@ -54,7 +56,7 @@ export const workItemPatchSchema = z
     systemInfo: html,
     foundInBuild: z.string().max(255),
     integratedInBuild: z.string().max(255),
-    tags: z.array(z.string().trim().min(1).max(100)).max(100),
+    tags: z.array(tag).max(MAX_TAGS),
   })
   .partial()
   .strict();
@@ -88,8 +90,8 @@ export const bulkSchema = z
   .object({
     ids: z.array(z.number().int()).min(1).max(1000),
     changes: workItemPatchSchema.omit({ title: true }),
-    addTags: z.array(z.string().trim().min(1)).optional(),
-    removeTags: z.array(z.string()).optional(),
+    addTags: z.array(tag).max(MAX_TAGS).optional(),
+    removeTags: z.array(z.string().max(100)).max(MAX_TAGS).optional(),
   })
   .strict();
 
@@ -331,7 +333,8 @@ export function bulkUpdate(tx: Tx, input: z.infer<typeof bulkSchema>) {
     if (patch.parentId !== undefined && patch.parentId !== null && !canBeParent(tx.item(patch.parentId).type, item.type)) delete patch.parentId;
     if (input.addTags?.length || input.removeTags?.length) {
       const remove = new Set((input.removeTags ?? []).map((t) => t.toLowerCase()));
-      patch.tags = [...item.tags.filter((t) => !remove.has(t.toLowerCase())), ...(input.addTags ?? [])];
+      patch.tags = normalizeTags([...item.tags.filter((t) => !remove.has(t.toLowerCase())), ...(input.addTags ?? [])]);
+      if (patch.tags.length > MAX_TAGS) throw badRequest(`Work item ${id} would have more than ${MAX_TAGS} tags`);
     }
     const from = item.iterationId;
     applyPatch(tx, item, patch);

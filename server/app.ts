@@ -39,7 +39,12 @@ const IMPORT_LIMIT = '50mb';
 function userName(store: Store, req: Request): string {
   const raw = req.header('x-user');
   if (!raw) return 'Anonymous';
-  const value = decodeURIComponent(raw);
+  let value: string;
+  try {
+    value = decodeURIComponent(raw);
+  } catch {
+    return 'Anonymous'; // not valid percent-encoding: treat it as missing
+  }
   return store.db.members.find((m) => m.id === value)?.name ?? value.slice(0, 128);
 }
 
