@@ -75,6 +75,9 @@ backup_app() { # name dir
     problem "$1: the nightly backup failed: $(echo "$out" | tail -2 | tr '\n' ' ')"
     return
   fi
+  # Also tighten archives written before this was in place (best effort, like deploy/backup.sh).
+  chmod 700 "$HOME/$1-backups" 2>/dev/null || true
+  find "$HOME/$1-backups" -maxdepth 1 -name "$1-*.tar.gz*" -type f -exec chmod 600 {} + 2>/dev/null || true
   file=$(ls -1t "$HOME/$1-backups/$1"-*.tar.gz 2>/dev/null | head -1)
   if [ -z "$file" ] || ! gzip -t "$file" 2>/dev/null; then
     problem "$1: the newest backup archive is missing or damaged ($file)"
