@@ -366,5 +366,11 @@ describe('comments', () => {
     const url = `/api/workitems/${item.id}/comments/${comment.id}`;
     expect((await request(app).patch(url).set('X-User', bo.id).send({ text: 'Edited' })).status).toBe(200);
     expect((await request(app).delete(url)).status).toBe(200);
+    // X-User may also name the member (scripts do), as long as only one member has that name.
+    const byName = (await request(app).post(`/api/workitems/${item.id}/comments`).set('X-User', 'Bo User').send({ text: 'By name' })).body.result;
+    expect(byName.authorId).toBe(bo.id);
+    await member('Bo User', 'bo2');
+    const ambiguous = (await request(app).post(`/api/workitems/${item.id}/comments`).set('X-User', 'Bo User').send({ text: 'Which Bo?' })).body.result;
+    expect(ambiguous.authorId).toBeNull();
   });
 });

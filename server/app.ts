@@ -43,18 +43,24 @@ function userName(store: Store, req: Request): string {
   return store.db.members.find((m) => m.id === value)?.name ?? value.slice(0, 128);
 }
 
-/** The member making the request: the signed-in one or the API token's, else the one picked in X-User. */
+/**
+ * The member making the request: the signed-in one or the API token's, else the one X-User names
+ * (by id, or by a name only one member has).
+ */
 function callerId(store: Store, req: Request, res: Response): string | null {
   const member = res.locals.authMember as Member | null | undefined;
   if (member) return member.id;
   const raw = req.header('x-user');
   if (!raw) return null;
+  let value: string;
   try {
-    const id = decodeURIComponent(raw);
-    return store.db.members.some((m) => m.id === id) ? id : null;
+    value = decodeURIComponent(raw);
   } catch {
     return null;
   }
+  if (store.db.members.some((m) => m.id === value)) return value;
+  const named = store.db.members.filter((m) => m.name === value);
+  return named.length === 1 ? named[0].id : null;
 }
 
 const intParam = (value: string | string[] | undefined) => {
