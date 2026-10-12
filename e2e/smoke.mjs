@@ -81,30 +81,6 @@ await page.locator('.history-table', { hasText: 'Effort' }).waitFor();
 await page.getByRole('button', { name: 'Close' }).last().click();
 await page.locator('.wi-form').waitFor({ state: 'detached' });
 
-step('backlog: Ctrl-click two rows, move them to the bottom and tag them together');
-await page.goto(base + '/backlogs/requirements');
-const levelRows = page.locator('tr.grid-row.row-level');
-const rowId = async (r) => {
-  const title = (await r.locator('.title-link').textContent()).trim();
-  return (await db()).workItems.find((w) => w.title === title).id;
-};
-const [pickA, pickB] = [levelRows.nth(0), levelRows.nth(2)];
-const [idA, idB] = [await rowId(pickA), await rowId(pickB)];
-await pickA.locator('.col-order').click();
-await pickB.locator('.col-order').click({ modifiers: ['ControlOrMeta'] });
-assert.equal(await page.locator('tr.grid-row.selected').count(), 2);
-await page.getByRole('button', { name: /2 selected/ }).click();
-await page.locator('.menu-item', { hasText: 'Move to bottom' }).click();
-await page.waitForTimeout(400);
-const openPbis = (await db()).workItems.filter((w) => ['Product Backlog Item', 'Bug'].includes(w.type) && !['Done', 'Removed'].includes(w.state)).sort((a, b) => a.stackRank - b.stackRank).map((w) => w.id);
-assert.deepEqual(openPbis.slice(-2), [idA, idB], 'both at the bottom, in their order');
-await page.getByRole('button', { name: /2 selected/ }).click();
-await page.locator('.menu-item', { hasText: 'Add tags' }).click();
-await page.getByLabel('Tags to add').fill('Bulk, Q4');
-await page.getByRole('button', { name: 'Add tags', exact: true }).click();
-await page.waitForTimeout(400);
-for (const id of [idA, idB]) assert.deepEqual((await db()).workItems.find((w) => w.id === id).tags.slice(-2), ['Bulk', 'Q4']);
-
 step('taskboard: drag a task from To Do to In Progress');
 const current = (await db()).sprints.find((s) => s.name === 'Sprint 3');
 await page.goto(`${base}/sprints/${current.id}/taskboard`);
@@ -214,6 +190,30 @@ await fetch(base + '/api/workitems/' + (await db()).workItems.find((w) => w.titl
 });
 await other.locator('.card', { hasText: 'Dark mode (renamed elsewhere)' }).waitFor({ timeout: 5000 });
 await other.close();
+
+step('backlog: Ctrl-click two rows, move them to the bottom and tag them together');
+await page.goto(base + '/backlogs/requirements');
+const levelRows = page.locator('tr.grid-row.row-level');
+const rowId = async (r) => {
+  const title = (await r.locator('.title-link').textContent()).trim();
+  return (await db()).workItems.find((w) => w.title === title).id;
+};
+const [pickA, pickB] = [levelRows.nth(0), levelRows.nth(2)];
+const [idA, idB] = [await rowId(pickA), await rowId(pickB)];
+await pickA.locator('.col-order').click();
+await pickB.locator('.col-order').click({ modifiers: ['ControlOrMeta'] });
+assert.equal(await page.locator('tr.grid-row.selected').count(), 2);
+await page.getByRole('button', { name: /2 selected/ }).click();
+await page.locator('.menu-item', { hasText: 'Move to bottom' }).click();
+await page.waitForTimeout(400);
+const openPbis = (await db()).workItems.filter((w) => ['Product Backlog Item', 'Bug'].includes(w.type) && !['Done', 'Removed'].includes(w.state)).sort((a, b) => a.stackRank - b.stackRank).map((w) => w.id);
+assert.deepEqual(openPbis.slice(-2), [idA, idB], 'both at the bottom, in their order');
+await page.getByRole('button', { name: /2 selected/ }).click();
+await page.locator('.menu-item', { hasText: 'Add tags' }).click();
+await page.getByLabel('Tags to add').fill('Bulk, Q4');
+await page.getByRole('button', { name: 'Add tags', exact: true }).click();
+await page.waitForTimeout(400);
+for (const id of [idA, idB]) assert.deepEqual((await db()).workItems.find((w) => w.id === id).tags.slice(-2), ['Bulk', 'Q4']);
 
 step('snapshot, change, restore');
 await page.goto(base + '/settings/backups');
