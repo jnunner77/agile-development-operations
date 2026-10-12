@@ -69,7 +69,13 @@ site_ok() { curl -fsS -m 20 -o /dev/null "https://$1/api/health"; }
 # ---- 1. backups ------------------------------------------------------------------------------
 backup_app() { # name dir
   local out file
-  if ! out=$(cd "$2" && KEEP="${KEEP_ARCHIVES:-14}" deploy/backup.sh 2>&1); then
+  # Archives hold password hashes and secrets: make the ones already there owner-only first (best
+  # effort, and whether or not tonight's backup works), then back up under umask 077, whatever
+  # each app's script does. The umask is scoped to that subshell: git pulls and image builds
+  # elsewhere need the normal one.
+  chmod 700 "$HOME/$1-backups" 2>/dev/null || true
+  find "$HOME/$1-backups" -maxdepth 1 -name "$1-*.tar.gz*" -type f -exec chmod 600 {} + 2>/dev/null || true
+  if ! out=$(cd "$2" && umask 077 && KEEP="${KEEP_ARCHIVES:-14}" deploy/backup.sh 2>&1); then
     problem "$1: the nightly backup failed: $(echo "$out" | tail -2 | tr '\n' ' ')"
     return
   fi

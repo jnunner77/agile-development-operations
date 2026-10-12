@@ -3,7 +3,8 @@
 Once this is set up, the server looks after itself. Every night at 02:30 (Vancouver time) the
 `nunner-ops` job (`deploy/ops/nightly.sh`):
 
-1. **Backs up** Boards and the binder to `~/boards-backups` and `~/binder-backups` (newest 14 kept).
+1. **Backs up** Boards and the binder to `~/boards-backups` and `~/binder-backups` (newest 14 kept),
+   readable only by you: the archives hold password hashes and secrets.
 2. **Copies both archives to Cloud Storage**, off the VM's disk. The bucket deletes copies after
    35 days. The VM can add copies but can't delete them, so a compromised server can't wipe its backups.
 3. **Updates both apps** when `main` has changed on GitHub. A new version that doesn't come up
