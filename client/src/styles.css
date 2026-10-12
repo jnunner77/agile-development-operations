@@ -1756,11 +1756,6 @@ tr.selected .row-more {
 .card:hover {
   box-shadow: var(--shadow-lg);
 }
-.card.selected {
-  background: var(--selected);
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
 .card.drop-before {
   box-shadow: 0 -3px 0 var(--accent), var(--shadow);
 }

@@ -79,10 +79,6 @@ docker compose up -d --build
 ### Boards (Kanban)
 - Column per state for each backlog level; drag cards between columns and reorder within a column.
 - Cards show assignee, effort, iteration, due date (overdue highlighted), tags and a child checklist.
-- Select cards with click, Ctrl/⌘-click (toggle) and Shift-click (a range in a column), or **Select** in
-  a card's menu on touch screens. Drag any selected card to move them all, or use the **N selected**
-  menu to move them to the top or bottom, to an iteration, assign, change state, re-parent, tag or
-  delete them together. Esc clears the selection.
 
 ### Sprints
 - Create, edit (dates & sprint goal) and delete sprints; next sprint dates are suggested.

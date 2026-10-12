@@ -63,20 +63,6 @@ assert.equal((await db()).workItems.find((w) => w.title === lanePbiTitle).assign
 // 7. Bottom navigation
 await page.locator('.bottomnav-link', { hasText: 'Boards' }).tap();
 await page.waitForURL(/\/boards\//);
-// 8. Board: select two cards through their menus, then change both at once
-await page.goto(base + '/boards/requirements');
-const boardCards = page.locator('.board-column').first().locator('.card');
-const picked = [Number((await boardCards.nth(0).locator('.card-id').textContent()).trim()), Number((await boardCards.nth(1).locator('.card-id').textContent()).trim())];
-await boardCards.nth(0).locator('.card-more').tap();
-await page.locator('.menu-item', { hasText: /^Select$/ }).tap();
-await boardCards.nth(1).locator('.card-more').tap();
-await page.locator('.menu-item', { hasText: 'Add to selection (2)' }).tap();
-assert.equal(await page.locator('.card.selected').count(), 2, 'two cards selected');
-await boardCards.nth(1).locator('.card-more').tap();
-await page.locator('.menu-item', { hasText: 'Change state' }).tap();
-await page.locator('.submenu .menu-item', { hasText: 'Approved' }).tap();
-await page.waitForTimeout(400);
-for (const id of picked) assert.equal((await db()).workItems.find((w) => w.id === id).state, 'Approved', 'both changed');
 assert.deepEqual(errors, []);
 console.log('Mobile smoke test passed');
 await browser.close();
