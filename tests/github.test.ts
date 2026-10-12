@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../server/app';
 import { AuthManager } from '../server/auth';
 import { GitHubIntegration } from '../server/github';
@@ -29,6 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -98,6 +99,23 @@ describe('webhook security', () => {
     const app2 = createApp({ store: s2, snapshots: new SnapshotManager(s2), security: false });
     expect((await deliver('ping', { repository: REPO }, { target: app2 })).status).toBe(404);
     fs.rmSync(fresh, { recursive: true, force: true });
+  });
+
+  it('processes a redelivery of a delivery that failed', async () => {
+    await create('Task');
+    const payload = { ref: 'wi/1', ref_type: 'branch', repository: REPO, sender: SENDER };
+    // The first attempt fails while being processed; GitHub then redelivers it with the same id.
+    vi.spyOn(store, 'transact').mockImplementationOnce(() => {
+      throw new Error('temporary failure');
+    });
+    expect((await deliver('create', payload, { id: 'retry' })).status).toBe(500);
+    expect(item(1).devLinks).toHaveLength(0);
+    const again = await deliver('create', payload, { id: 'retry' });
+    expect(again.status).toBe(200);
+    expect(again.body.result).not.toMatch(/Duplicate/);
+    expect(item(1).devLinks).toHaveLength(1);
+    // Once it has succeeded, the same id is a duplicate.
+    expect((await deliver('create', payload, { id: 'retry' })).body.result).toMatch(/Duplicate/);
   });
 
   it('ignores duplicate deliveries', async () => {
