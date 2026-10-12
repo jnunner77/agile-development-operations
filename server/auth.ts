@@ -421,14 +421,14 @@ export class AuthManager {
     if (token && member) {
       // Token callers act as the token's member, whether or not sign-in is on.
       if (token.scope === 'read' && MUTATING.has(req.method)) return res.status(403).json({ error: 'This API token is read-only' });
-      if (req.path.startsWith('/auth/') && req.path !== '/auth/status') throw tokenForbidden('manage sign-in or tokens');
+      // Sign-in and token routes turn tokens away themselves (see routes()).
       req.headers['x-user'] = encodeURIComponent(member.id);
       return next();
     }
     if (!this.enabled) return next();
     if (member) req.headers['x-user'] = encodeURIComponent(member.id);
     else delete req.headers['x-user'];
-    if (PUBLIC_PATHS.has(req.path)) return next();
+    if (PUBLIC_PATHS.has(req.path.toLowerCase())) return next();
     if (!member) return res.status(401).json({ error: 'Please sign in', code: 'signin' });
     next();
   };
@@ -463,6 +463,12 @@ export class AuthManager {
 
   routes() {
     const r = express.Router();
+    // API tokens can't manage sign-in or tokens. Checked here rather than by matching paths
+    // earlier, because routing ignores case: /api/AUTH/tokens reaches these routes too.
+    r.use((req, res, next) => {
+      if (res.locals.apiToken && req.path.toLowerCase() !== '/status') throw tokenForbidden('manage sign-in or tokens');
+      next();
+    });
     r.get('/status', (_req, res) => {
       res.json(this.status(res.locals.authMember ?? null));
     });

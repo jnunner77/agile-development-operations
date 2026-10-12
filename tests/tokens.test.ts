@@ -137,6 +137,26 @@ describe('API tokens', () => {
     expect((await request(app).get('/api/auth/status').set(bearer(secret))).status).toBe(200);
   });
 
+  it('can never manage tokens or sign-in, however the path is spelled', async () => {
+    const ada = await member('Ada Admin', 'ada');
+    await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+    const { token: secret, info } = await token(ada.id);
+    await request(app).put('/api/auth/settings').send({ enabled: true });
+    for (const [method, url] of [
+      ['post', '/api/AUTH/tokens'],
+      ['get', '/api/Auth/tokens'],
+      ['delete', `/api/AUTH/tokens/${info.id}`],
+      ['get', '/api/auth/TOKENS'],
+      ['get', '/api/AUTH/admin'],
+      ['put', '/api/Auth/Settings'],
+    ] as const) {
+      const res = await request(app)[method](url).set(bearer(secret)).send({ name: 'x', memberId: ada.id, scope: 'write', enabled: false });
+      expect(res.status, `${method} ${url}`).toBe(403);
+    }
+    expect((await request(app).get('/api/AUTH/Status').set(bearer(secret))).status).toBe(200);
+    expect((await request(app).get('/api/auth/tokens').set(bearer(secret))).status).toBe(403);
+  });
+
   it('let people manage their own tokens and administrators manage everyone', async () => {
     const { ada, bo, claude } = await setup();
     const boAgent = await signIn('bo');
