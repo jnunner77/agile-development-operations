@@ -153,6 +153,10 @@ otherwise passwords travel over the network unencrypted.
   can be revoked. Only a hash is stored, outside the database, snapshots and backups.
 - Use it as `Authorization: Bearer <token>`. Tokens can't administer the project or create
   more tokens. See [`docs/api.md`](docs/api.md) for the endpoints.
+- When an administrator sets or resets someone's password, that person's tokens are revoked too
+  (as when taking back a compromised account). Turning sign-in on lists the tokens that already
+  exist (any made while it was off could have been made by anyone) and revokes them unless you
+  untick it.
 
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,
