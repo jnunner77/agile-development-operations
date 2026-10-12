@@ -1,7 +1,7 @@
 import crypto, { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { branchIds, mentionedIds } from '../shared/devlinks';
 import { TYPE_DEFS, stateCategory } from '../shared/process';
@@ -300,6 +300,17 @@ export class GitHubIntegration {
   }
 
   // ---- Express glue ----
+
+  /**
+   * Runs before the body is read: turn away requests that can't be a delivery, so nobody can
+   * make the server buffer a large body for nothing.
+   */
+  precheck = (req: Request, _res: Response, next: NextFunction) => {
+    if (!this.data.github.enabled || !this.data.github.secret) throw notFound('Webhook');
+    if (!req.get('x-hub-signature-256')?.startsWith('sha256=')) throw new HttpError(401, 'Invalid signature');
+    if (!req.get('x-github-event')) throw new HttpError(400, 'Missing X-GitHub-Event header');
+    next();
+  };
 
   /** Public webhook endpoint (authenticated by signature, not by session). */
   webhook = (req: Request, res: Response) => {

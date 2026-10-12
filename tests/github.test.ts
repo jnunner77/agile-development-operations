@@ -93,6 +93,30 @@ describe('webhook security', () => {
     expect((await deliver('ping', payload)).status).toBe(200);
   });
 
+  it('turns requests away before reading their body', async () => {
+    // Bigger than the body limit: had the body been read first, the answer would be 413.
+    const huge = 'x'.repeat(11 * 1024 * 1024);
+    const post = (target: typeof app, headers: Record<string, string>) => {
+      const req = request(target).post('/api/integrations/github/webhook').set('Content-Type', 'application/json');
+      for (const [k, v] of Object.entries(headers)) req.set(k, v);
+      return req.send(huge);
+    };
+    const signed = { 'X-GitHub-Event': 'ping', 'X-Hub-Signature-256': 'sha256=00' };
+    expect((await post(app, { 'X-GitHub-Event': 'ping' })).status).toBe(401);
+    expect((await post(app, { 'X-Hub-Signature-256': 'sha256=00' })).status).toBe(400);
+    // A signed request of that size does get read, and is refused as too large.
+    expect((await post(app, signed)).status).toBe(413);
+
+    await request(app).put('/api/integrations/github').send({ enabled: false });
+    expect((await post(app, signed)).status).toBe(404);
+
+    const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-github-'));
+    const s2 = new Store(fresh, () => emptyDatabase());
+    const noSecret = createApp({ store: s2, snapshots: new SnapshotManager(s2), security: false });
+    expect((await post(noSecret, signed)).status).toBe(404);
+    fs.rmSync(fresh, { recursive: true, force: true });
+  });
+
   it('is disabled until a secret is created', async () => {
     const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-github-'));
     const s2 = new Store(fresh, () => emptyDatabase());

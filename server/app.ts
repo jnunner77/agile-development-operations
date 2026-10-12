@@ -108,7 +108,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     api.use(['/auth/login', '/auth/password'], security.signIn);
   }
   // GitHub webhooks authenticate with a signature over the body, not a session.
-  api.post('/integrations/github/webhook', GitHubIntegration.rawBody, github.webhook);
+  api.post('/integrations/github/webhook', github.precheck, GitHubIntegration.rawBody, github.webhook);
 
   // With sign-in on, everything below needs a valid session.
   api.use(auth.authenticate);
