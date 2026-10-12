@@ -143,7 +143,8 @@ export function IntegrationsSettings() {
             </thead>
             <tbody>
               {view.deliveries.map((d) => (
-                <tr key={d.id} className="grid-row">
+                // A redelivery reuses its delivery id, so the attempt's time keeps the key unique.
+                <tr key={`${d.id}-${d.receivedAt}`} className="grid-row">
                   <td className="small" title={d.receivedAt}>
                     {timeAgo(d.receivedAt)}
                   </td>

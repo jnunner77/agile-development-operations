@@ -309,8 +309,6 @@ export class GitHubIntegration {
     const event = req.get('x-github-event') ?? '';
     const deliveryId = req.get('x-github-delivery') ?? randomUUID();
     if (this.seen.has(deliveryId)) return res.status(200).json({ result: 'Duplicate delivery ignored' });
-    this.seen.add(deliveryId);
-    if (this.seen.size > 5000) this.seen.delete(this.seen.values().next().value!);
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(body.toString('utf8'));
@@ -318,7 +316,12 @@ export class GitHubIntegration {
       throw new HttpError(400, 'Payload must be JSON (set the webhook content type to application/json)');
     }
     try {
-      res.json(this.handle(event, deliveryId, payload));
+      const outcome = this.handle(event, deliveryId, payload);
+      // Remember the delivery only once it has been handled, so GitHub's "Redeliver" (which
+      // reuses the delivery id) can retry one that failed.
+      this.seen.add(deliveryId);
+      if (this.seen.size > 5000) this.seen.delete(this.seen.values().next().value!);
+      res.json(outcome);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.record({ id: deliveryId, event, repo: (payload.repository as Repo | undefined)?.full_name ?? '', receivedAt: new Date().toISOString(), ok: false, result: `Failed: ${message}`, linked: [] });
