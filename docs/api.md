@@ -14,7 +14,8 @@ auth=(-H "Authorization: Bearer $BOARDS_TOKEN" -H "Content-Type: application/jso
   work items, sprints and capacity.
 - Tokens can never manage sign-in, tokens, team members, project settings, integrations,
   snapshot restores, imports or resets (403).
-- A wrong or expired token gets `401`; repeated bad tokens block the IP address for an hour.
+- A wrong, expired or revoked token gets `401`; repeated bad tokens block the IP address for an
+  hour. A member's tokens are revoked when an administrator sets or resets their password.
 - Requests are rate limited (about 600 a minute, 240 changes a minute). A `429` response has
   a `Retry-After` header.
 - Errors are `{"error": "message"}`.

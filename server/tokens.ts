@@ -106,6 +106,15 @@ export class TokenManager {
     this.save();
   }
 
+  /** Revoke every token that acts as this member; returns how many there were. */
+  revokeAll(memberId: string): number {
+    const before = this.tokens.length;
+    this.tokens = this.tokens.filter((t) => t.memberId !== memberId);
+    const revoked = before - this.tokens.length;
+    if (revoked) this.save();
+    return revoked;
+  }
+
   get(id: string): ApiTokenInfo {
     const t = this.tokens.find((x) => x.id === id);
     if (!t) throw notFound('Token');
