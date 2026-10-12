@@ -96,11 +96,16 @@ export class Store {
     }
   }
 
-  /** Atomic write: write a temp file then rename over the original. */
-  save() {
+  /** Atomic write: write a temp file then rename over the original. Throws if it can't. */
+  save(db: Database = this.db) {
     const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(this.db));
-    fs.renameSync(tmp, this.file);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(db));
+      fs.renameSync(tmp, this.file);
+    } catch (err) {
+      fs.rmSync(tmp, { force: true });
+      throw err;
+    }
   }
 
   /** Register a check that throws if a database state must not be committed. */
@@ -132,8 +137,9 @@ export class Store {
     const result = fn(tx);
     if (tx.members.size || tx.deletedMembers.size) this.check(working);
     working.version = this.db.version + 1;
+    // On disk first: if the write fails, the live database and browsers are left as they were.
+    this.save(working);
     this.db = working;
-    this.save();
     const delta = tx.toDelta();
     this.emit(delta, origin);
     return { delta, result };
@@ -144,8 +150,8 @@ export class Store {
     const next = normalizeDatabase(db);
     this.check(next);
     next.version = this.db.version + 1;
+    this.save(next);
     this.db = next;
-    this.save();
     const delta: Delta = { version: next.version, reset: true };
     this.emit(delta, origin);
     return delta;
