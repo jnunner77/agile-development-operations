@@ -5,7 +5,7 @@ import { toast, useStore } from '../store';
 import { Modal } from './common';
 import { Icon } from './Icon';
 
-type Step = { kind: 'login' } | { kind: 'setup' } | { kind: 'change'; reason: 'expired' | 'temporary' };
+type Step = { kind: 'login' } | { kind: 'change'; reason: 'expired' | 'temporary' };
 
 const message = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong');
 
@@ -53,7 +53,7 @@ export function SignInScreen() {
     if (result.status === 'ok') return finishSignIn();
     setNewPassword('');
     setConfirm('');
-    setStep(result.status === 'setup' ? { kind: 'setup' } : { kind: 'change', reason: result.reason });
+    setStep({ kind: 'change', reason: result.reason });
   };
 
   const submitLogin = (e: React.FormEvent) => {
@@ -66,7 +66,7 @@ export function SignInScreen() {
     const problem = passwordProblem(newPassword, confirm, username, min);
     if (problem) return setError(problem);
     void run(async () => {
-      await authApi.setPassword({ username, currentPassword: step.kind === 'change' ? password : undefined, newPassword });
+      await authApi.setPassword({ username, currentPassword: password, newPassword });
       await finishSignIn();
     });
   };
@@ -93,25 +93,20 @@ export function SignInScreen() {
             </label>
             <label>
               Password
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
             </label>
-            <p className="muted small">First time signing in? Enter your username and leave the password blank to create one.</p>
+            <p className="muted small">First time signing in? Ask an administrator for a temporary password; you'll choose your own right after.</p>
             {error && <div className="form-error" role="alert">{error}</div>}
-            <button className="btn btn-primary" type="submit" disabled={busy || !username.trim()}>
+            <button className="btn btn-primary" type="submit" disabled={busy || !username.trim() || !password}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         ) : (
           <form className="form" onSubmit={submitNew}>
-            <h1>{step.kind === 'setup' ? 'Create your password' : 'Choose a new password'}</h1>
+            <h1>Choose a new password</h1>
             <p className="muted">
-              {step.kind === 'setup' && (
-                <>
-                  Welcome, <strong>{username.trim()}</strong>. Choose the password you'll use to sign in from now on.
-                </>
-              )}
-              {step.kind === 'change' && step.reason === 'expired' && 'Your password has expired. Choose a new one to continue.'}
-              {step.kind === 'change' && step.reason === 'temporary' && 'An administrator set a temporary password for you. Choose your own to continue.'}
+              {step.reason === 'expired' && 'Your password has expired. Choose a new one to continue.'}
+              {step.reason === 'temporary' && 'An administrator set a temporary password for you. Choose your own to continue.'}
               {expiryDays > 0 && ` Passwords expire after ${expiryDays} days.`}
             </p>
             <label>

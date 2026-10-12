@@ -179,7 +179,7 @@ export const api = {
 export const authApi = {
   status: () => request<AuthStatus>('GET', '/auth/status'),
   login: (username: string, password: string) => request<LoginResult>('POST', '/auth/login', { username, password }),
-  /** First-time setup (no currentPassword), expired/temporary passwords, or a voluntary change. */
+  /** Replace an expired or temporary password, or change your own. */
   setPassword: (input: { username: string; currentPassword?: string; newPassword: string }) => request<LoginResult>('POST', '/auth/password', input),
   logout: () => request<void>('POST', '/auth/logout'),
   admin: () => request<AuthAdminView>('GET', '/auth/admin'),

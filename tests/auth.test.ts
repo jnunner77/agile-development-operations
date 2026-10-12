@@ -36,26 +36,28 @@ async function member(name: string, username: string) {
   return res.body.result as { id: string };
 }
 
-/** Create an admin and a regular user, then turn sign-in on. */
+/** Set a member's password as an administrator would (the API is open while sign-in is off). */
+async function setPassword(id: string, password = 'correct horse', mustChange = false, agent?: request.Agent) {
+  const res = await (agent ?? request(app)).post(`/api/auth/accounts/${id}/password`).send({ password, mustChange });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+}
+
+/** Create an admin and a regular user with passwords ("correct horse"), then turn sign-in on. */
 async function setup() {
   const ada = await member('Ada Admin', 'ada');
   const bo = await member('Bo User', 'bo');
   expect((await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true })).status).toBe(200);
+  await setPassword(ada.id);
+  await setPassword(bo.id);
   expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
   return { ada, bo };
 }
 
-/** Sign in through first-time setup and return a cookie-carrying agent. */
+/** Sign in and return a cookie-carrying agent. */
 async function signIn(username: string, password = 'correct horse') {
   const agent = request.agent(app);
-  const first = await agent.post('/api/auth/login').send({ username });
-  if (first.body.status === 'setup') {
-    const res = await agent.post('/api/auth/password').send({ username, newPassword: password });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-  } else {
-    const res = await agent.post('/api/auth/login').send({ username, password });
-    expect(res.body.status).toBe('ok');
-  }
+  const res = await agent.post('/api/auth/login').send({ username, password });
+  expect(res.body.status, JSON.stringify(res.body)).toBe('ok');
   return agent;
 }
 
@@ -73,22 +75,72 @@ describe('sign-in', () => {
     expect(res.body.error).toMatch(/administrator/);
   });
 
-  it('requires a session once on, and sets the password on first sign-in', async () => {
+  it('needs that administrator to have a password, so nobody else can claim the account', async () => {
+    const ada = await member('Ada', 'ada');
+    await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+    const res = await request(app).put('/api/auth/settings').send({ enabled: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/password/);
+    await setPassword(ada.id);
+    expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
+  });
+
+  it('requires a session once on, and signs in with the password', async () => {
     await setup();
     expect((await request(app).get('/api/bootstrap')).status).toBe(401);
 
     const agent = request.agent(app);
-    expect((await agent.post('/api/auth/login').send({ username: 'ADA' })).body).toEqual({ status: 'setup' });
-    expect((await agent.post('/api/auth/password').send({ username: 'ada', newPassword: 'short' })).status).toBe(400);
-    expect((await agent.post('/api/auth/password').send({ username: 'ada', newPassword: 'ada' })).status).toBe(400);
-    const set = await agent.post('/api/auth/password').send({ username: 'ada', newPassword: 'correct horse' });
-    expect(set.status).toBe(200);
-    expect(set.headers['set-cookie'][0]).toMatch(/HttpOnly/);
+    const ok = await agent.post('/api/auth/login').send({ username: 'ADA', password: 'correct horse' });
+    expect(ok.body.status).toBe('ok');
+    expect(ok.headers['set-cookie'][0]).toMatch(/HttpOnly/);
     expect((await agent.get('/api/bootstrap')).status).toBe(200);
 
-    // Once set, the password is required and first-time setup can't be repeated.
     expect((await request(app).post('/api/auth/login').send({ username: 'ada' })).status).toBe(401);
     expect((await request(app).post('/api/auth/password').send({ username: 'ada', newPassword: 'taken over!' })).status).toBe(401);
+  });
+
+  it("never lets anyone claim an administrator's account that has no password", async () => {
+    await setup();
+    const admin = await signIn('ada');
+    const dee = (await admin.post('/api/members').send({ name: 'Dee Admin', username: 'dee' })).body.result as { id: string };
+    expect((await admin.patch(`/api/auth/accounts/${dee.id}`).send({ isAdmin: true })).status).toBe(200);
+    const unknown = await request(app).post('/api/auth/login').send({ username: 'nobody', password: 'anything 1' });
+    for (const body of [{ username: 'dee' }, { username: 'dee', password: 'anything 1' }]) {
+      const res = await request(app).post('/api/auth/login').send(body);
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unknown.body);
+      expect(res.headers['set-cookie']).toBeUndefined();
+    }
+    const claim = await request(app).post('/api/auth/password').send({ username: 'dee', newPassword: 'taken over!' });
+    expect(claim.status).toBe(401);
+    expect(claim.body).toEqual(unknown.body);
+    expect(claim.headers['set-cookie']).toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'auth.json'), 'utf8')).accounts[dee.id].passwordHash).toBeNull();
+  });
+
+  it('never lets anyone choose the first password of an account', async () => {
+    await setup();
+    const admin = await signIn('ada');
+    const cy = (await admin.post('/api/members').send({ name: 'Cy New', username: 'cy' })).body.result as { id: string };
+    const unknown = await request(app).post('/api/auth/login').send({ username: 'nobody', password: 'anything 1' });
+    for (const body of [{ username: 'cy' }, { username: 'cy', password: 'anything 1' }]) {
+      const res = await request(app).post('/api/auth/login').send(body);
+      // Answers exactly like an unknown username.
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(unknown.body);
+    }
+    const claim = await request(app).post('/api/auth/password').send({ username: 'cy', newPassword: 'taken over!' });
+    expect(claim.status).toBe(401);
+    expect(claim.headers['set-cookie']).toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'auth.json'), 'utf8')).accounts[cy.id]?.passwordHash ?? null).toBeNull();
+
+    // An administrator gives them a temporary password; they choose their own from it.
+    await setPassword(cy.id, 'temporary 1', true, admin);
+    expect((await request(app).post('/api/auth/login').send({ username: 'cy', password: 'temporary 1' })).body).toEqual({ status: 'change', reason: 'temporary' });
+    const own = request.agent(app);
+    expect((await own.post('/api/auth/password').send({ username: 'cy', newPassword: 'cy password 1' })).status).toBe(401);
+    expect((await own.post('/api/auth/password').send({ username: 'cy', currentPassword: 'temporary 1', newPassword: 'cy password 1' })).status).toBe(200);
+    expect((await own.get('/api/bootstrap')).status).toBe(200);
   });
 
   it('stores only a salted hash, never the password', async () => {
@@ -166,7 +218,7 @@ describe('sign-in', () => {
   it('lets administrators set a temporary password or reset someone else', async () => {
     const { bo } = await setup();
     const admin = await signIn('ada');
-    const user = await signIn('bo', 'bo password 1');
+    const user = await signIn('bo');
 
     expect((await admin.post(`/api/auth/accounts/${bo.id}/password`).send({ password: 'temporary 1' })).status).toBe(200);
     expect((await user.get('/api/bootstrap')).status).toBe(401); // their sessions end
@@ -174,7 +226,9 @@ describe('sign-in', () => {
     expect((await request(app).post('/api/auth/password').send({ username: 'bo', currentPassword: 'temporary 1', newPassword: 'bo password 2' })).status).toBe(200);
 
     expect((await admin.post(`/api/auth/accounts/${bo.id}/reset`)).status).toBe(200);
-    expect((await request(app).post('/api/auth/login').send({ username: 'bo' })).body).toEqual({ status: 'setup' });
+    // A reset account can't be signed in to or claimed until an administrator sets a password.
+    expect((await request(app).post('/api/auth/login').send({ username: 'bo', password: 'bo password 2' })).status).toBe(401);
+    expect((await request(app).post('/api/auth/password').send({ username: 'bo', newPassword: 'taken over!' })).status).toBe(401);
 
     const view = (await admin.get('/api/auth/admin')).body;
     expect(view.accounts.find((a: { memberId: string }) => a.memberId === bo.id)).toMatchObject({ hasPassword: false, isAdmin: false });
@@ -184,6 +238,7 @@ describe('sign-in', () => {
     const { ada } = await setup();
     const admin = await signIn('ada');
     expect((await admin.patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: false })).status).toBe(400);
+    expect((await admin.post(`/api/auth/accounts/${ada.id}/reset`)).status).toBe(400);
     expect((await admin.patch(`/api/members/${ada.id}`).send({ active: false })).status).toBe(400);
     expect((await admin.patch(`/api/members/${ada.id}`).send({ username: '' })).status).toBe(400);
     expect((await admin.delete(`/api/members/${ada.id}`)).status).toBe(400);
@@ -197,6 +252,20 @@ describe('sign-in', () => {
     const forced = createApp({ store: recovery, snapshots: new SnapshotManager(recovery), auth: new AuthManager(recovery, { disabled: true }) });
     expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
     expect((await request(forced).get('/api/bootstrap')).status).toBe(200);
+  });
+
+  it('can only be saved as on, even while forced off, when an administrator has a password', async () => {
+    const ada = await member('Ada Admin', 'ada');
+    await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+    const forcedAuth = new AuthManager(store, { disabled: true });
+    const forced = createApp({ store, snapshots: new SnapshotManager(store), auth: forcedAuth, security: false });
+    const res = await request(forced).put('/api/auth/settings').send({ enabled: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/password/);
+    expect(forcedAuth.settings.enabled).toBe(false);
+    await request(forced).post(`/api/auth/accounts/${ada.id}/password`).send({ password: 'correct horse', mustChange: false });
+    expect((await request(forced).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
+    expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
   });
 });
 
@@ -212,15 +281,12 @@ describe('deployment behind a proxy', () => {
   it('marks the session cookie Secure only when a trusted proxy reports HTTPS', async () => {
     await setup();
     const cookieFor = async (target: ReturnType<typeof createApp>) => {
-      await request(target).post('/api/auth/login').send({ username: 'bo' });
-      const res = await request(target).post('/api/auth/password').set('X-Forwarded-Proto', 'https').send({ username: 'bo', newPassword: 'correct horse' });
+      const res = await request(target).post('/api/auth/login').set('X-Forwarded-Proto', 'https').send({ username: 'bo', password: 'correct horse' });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       return String(res.headers['set-cookie']);
     };
     // Without trust proxy the forwarded header is ignored.
     expect(await cookieFor(app)).not.toMatch(/Secure/);
-    // Clear the password so the same first-time setup flow can run against the proxied app.
-    auth.resetPassword(store.db.members.find((m) => m.username === 'bo')!.id);
     const proxied = createApp({ store, snapshots: new SnapshotManager(store), auth, trustProxy: 1 });
     expect(await cookieFor(proxied)).toMatch(/Secure/);
   });

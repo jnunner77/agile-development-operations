@@ -115,7 +115,8 @@ describe('webhook security', () => {
     const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false, github: new GitHubIntegration(store) });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
     await request(signedIn).patch(`/api/auth/accounts/${member.id}`).send({ isAdmin: true });
-    await request(signedIn).put('/api/auth/settings').send({ enabled: true });
+    await request(signedIn).post(`/api/auth/accounts/${member.id}/password`).send({ password: 'correct horse', mustChange: false });
+    expect((await request(signedIn).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
     await create('Task');
     expect((await request(signedIn).get('/api/integrations/github')).status).toBe(401);
     const res = await deliver('create', { ref: 'wi/1-x', ref_type: 'branch', repository: REPO, sender: SENDER }, { target: signedIn });

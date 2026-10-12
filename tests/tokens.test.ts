@@ -41,22 +41,22 @@ async function token(memberId: string, scope: 'read' | 'write' = 'write', expire
   return res.body as { token: string; info: { id: string; prefix: string } };
 }
 
-/** Admin "ada", regular user "bo", a "Claude" member with no password, then sign-in on. */
+/** Admin "ada" and regular user "bo" (password "correct horse"), a "Claude" member with no password, then sign-in on. */
 async function setup() {
   const ada = await member('Ada Admin', 'ada');
   const bo = await member('Bo User', 'bo');
   const claude = await member('Claude');
   await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+  for (const m of [ada, bo]) await request(app).post(`/api/auth/accounts/${m.id}/password`).send({ password: 'correct horse', mustChange: false });
   const t = await token(claude.id);
-  await request(app).put('/api/auth/settings').send({ enabled: true });
+  expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
   return { ada, bo, claude, t };
 }
 
 async function signIn(username: string) {
   const agent = request.agent(app);
-  await agent.post('/api/auth/login').send({ username });
-  const res = await agent.post('/api/auth/password').send({ username, newPassword: 'correct horse' });
-  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  const res = await agent.post('/api/auth/login').send({ username, password: 'correct horse' });
+  expect(res.body.status, JSON.stringify(res.body)).toBe('ok');
   return agent;
 }
 
@@ -122,7 +122,8 @@ describe('API tokens', () => {
     await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
     // Even a token acting as an administrator.
     const { token: secret } = await token(ada.id);
-    await request(app).put('/api/auth/settings').send({ enabled: true });
+    await request(app).post(`/api/auth/accounts/${ada.id}/password`).send({ password: 'correct horse', mustChange: false });
+    expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
     for (const [method, url] of [
       ['get', '/api/auth/admin'],
       ['get', '/api/auth/tokens'],

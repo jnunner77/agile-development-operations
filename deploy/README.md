@@ -118,9 +118,11 @@ open `https://yourteam.duckdns.org` once `docker compose logs caddy` shows `cert
 Until sign-in is on, anyone who finds the address can use the app and make themselves an
 administrator. Right after the first start:
 
-1. **Project settings → Team members**: give yourself a username and make yourself an administrator.
-2. Turn sign-in on, sign in and choose your password.
-3. Add everyone else with a username (see *Sign-in* in the main README).
+1. **Project settings → Team members**: give yourself a username. In **Project settings →
+   Authentication**, make yourself an administrator and set your password (**Set password…**,
+   untick *Make them choose a new password*).
+2. Turn sign-in on and sign in.
+3. Add everyone else with a username and a temporary password (see *Sign-in* in the main README).
 
 ## 6. Connect GitHub (optional)
 
