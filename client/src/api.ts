@@ -15,7 +15,7 @@ import type {
 import type { LinkType, WorkItemType } from '../../shared/process';
 import type { ApiTokenInfo, ApiTokenScope, AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
 import type { GitHubAdminView, GitHubSettings } from '../../shared/integrations';
-import { StreamVersion } from './lib/stream';
+import { StreamVersion, loadFresh } from './lib/stream';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 
 const clientId = crypto.randomUUID();
@@ -72,7 +72,7 @@ async function mutate<T = unknown>(method: string, url: string, body?: unknown, 
 const streamVersion = new StreamVersion();
 
 export async function loadAll() {
-  const { db } = await request<{ db: Database }>('GET', '/bootstrap');
+  const db = await loadFresh(async () => (await request<{ db: Database }>('GET', '/bootstrap')).db, () => useStore.getState().version);
   setDatabase(db);
   streamVersion.loaded(db.version);
 }
