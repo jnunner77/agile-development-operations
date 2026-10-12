@@ -290,6 +290,24 @@ describe('snapshots and backups', () => {
     expect((await request(app).get(`/api/snapshots/../db`)).status).toBe(404);
   });
 
+  it('caps snapshots taken by hand, but never safety snapshots', async () => {
+    // Without rate limits, which would otherwise stop this many snapshots in a row.
+    const app = createApp({ store, snapshots: new SnapshotManager(store), security: false });
+    const take = () => request(app).post('/api/snapshots').send({ name: 'Mine' });
+    for (let i = 0; i < 50; i++) expect((await take()).status).toBe(201);
+    const refused = await take();
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toMatch(/50 snapshots/);
+    // Safety snapshots (here, before a reset) are still taken at the cap.
+    expect((await request(app).post('/api/backup/reset').send({ mode: 'empty' })).status).toBe(200);
+    const list = (await request(app).get('/api/snapshots')).body as { id: string; kind: string }[];
+    expect(list.filter((s) => s.kind === 'manual')).toHaveLength(50);
+    expect(list.some((s) => s.kind === 'pre-reset')).toBe(true);
+    // Deleting one makes room again.
+    await request(app).delete(`/api/snapshots/${list.find((s) => s.kind === 'manual')!.id}`);
+    expect((await take()).status).toBe(201);
+  });
+
   it('exports and imports a backup', async () => {
     await create('Feature', { title: 'Keep me' });
     const exported = (await request(app).get('/api/backup/export')).body;

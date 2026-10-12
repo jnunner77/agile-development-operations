@@ -16,6 +16,8 @@ const PREFIX = 'boards_';
 const DAY_MS = 86_400_000;
 export const TOKEN_MAX_DAYS = 365;
 const MAX_PER_MEMBER = 20;
+/** Expired tokens stay listed (as expired) for this long, then are removed. */
+const KEEP_EXPIRED_MS = 30 * DAY_MS;
 /** lastUsedAt is written to disk at most this often per token. */
 const TOUCH_INTERVAL_MS = 60_000;
 
@@ -55,6 +57,23 @@ export class TokenManager {
   ) {
     this.file = path.join(store.dataDir, 'api-tokens.json');
     if (fs.existsSync(this.file)) this.tokens = (JSON.parse(fs.readFileSync(this.file, 'utf8')) as { tokens?: StoredToken[] }).tokens ?? [];
+    this.prune();
+  }
+
+  /** Keep only the tokens `keep` accepts, forgetting everything about the others; returns how many went. */
+  private retain(keep: (t: StoredToken) => boolean): number {
+    const removed = this.tokens.filter((t) => !keep(t));
+    if (!removed.length) return 0;
+    this.tokens = this.tokens.filter(keep);
+    for (const t of removed) this.lastWrite.delete(t.id);
+    this.save();
+    return removed.length;
+  }
+
+  /** Remove tokens that expired more than KEEP_EXPIRED_MS ago. */
+  private prune() {
+    const cutoff = this.now() - KEEP_EXPIRED_MS;
+    this.retain((t) => Date.parse(t.expiresAt) > cutoff);
   }
 
   private save() {
@@ -69,6 +88,7 @@ export class TokenManager {
   }
 
   list(memberId?: string): ApiTokenInfo[] {
+    this.prune();
     return this.tokens.filter((t) => !memberId || t.memberId === memberId).map((t) => this.view(t));
   }
 
@@ -77,8 +97,10 @@ export class TokenManager {
     const member = this.store.db.members.find((m) => m.id === memberId);
     if (!member) throw notFound('Team member');
     if (!member.active) throw badRequest(`${member.name} is inactive`);
-    if (this.tokens.filter((t) => t.memberId === memberId).length >= MAX_PER_MEMBER) {
-      throw badRequest(`${member.name} already has ${MAX_PER_MEMBER} tokens. Revoke some first.`);
+    this.prune();
+    // Only tokens that still work count toward the limit.
+    if (this.tokens.filter((t) => t.memberId === memberId && Date.parse(t.expiresAt) > this.now()).length >= MAX_PER_MEMBER) {
+      throw badRequest(`${member.name} already has ${MAX_PER_MEMBER} active tokens. Revoke some first.`);
     }
     const token = PREFIX + crypto.randomBytes(32).toString('base64url');
     const now = this.now();
@@ -100,17 +122,12 @@ export class TokenManager {
   }
 
   revoke(id: string) {
-    const before = this.tokens.length;
-    this.tokens = this.tokens.filter((t) => t.id !== id);
-    if (this.tokens.length === before) throw notFound('Token');
-    this.save();
+    if (!this.retain((t) => t.id !== id)) throw notFound('Token');
   }
 
   /** Revoke every token that acts as this member. */
   revokeAll(memberId: string) {
-    const before = this.tokens.length;
-    this.tokens = this.tokens.filter((t) => t.memberId !== memberId);
-    if (this.tokens.length !== before) this.save();
+    this.retain((t) => t.memberId !== memberId);
   }
 
   get(id: string): ApiTokenInfo {

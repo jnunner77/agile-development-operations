@@ -112,7 +112,7 @@ Off by default, so the app works as before with a "who am I" picker. To turn it 
   still works once, to choose a new one.
 - **Session timeout**: people are signed out after 60 minutes of inactivity by default
   (configurable, 5 minutes to 7 days). Restarting the server signs everyone out.
-- **Lockout**: 5 wrong passwords lock that username for 5 minutes.
+- **Lockout**: 5 wrong passwords, each within 15 minutes of the last, lock that username for 5 minutes.
 - **Comments**: people can edit or delete only their own comments; administrators can change
   anyone's. API tokens can change only the comments of the member they act as.
 - **Administrators** can change these settings, set a temporary or permanent password for anyone,
@@ -152,7 +152,9 @@ otherwise passwords travel over the network unencrypted.
 ### API tokens
 - **Project settings → API tokens** creates tokens for scripts and assistants (such as Claude).
   A token acts as one team member, is read-only or read & write, expires (up to a year) and
-  can be revoked. Only a hash is stored, outside the database, snapshots and backups.
+  can be revoked. Only a hash is stored, outside the database, snapshots and backups. Each member
+  can have 20 active tokens; expired ones stop counting at once and are removed 30 days after
+  they expire.
 - Use it as `Authorization: Bearer <token>`. Tokens can't administer the project or create
   more tokens. See [`docs/api.md`](docs/api.md) for the endpoints.
 - When an administrator sets or resets someone's password, that person's tokens are revoked too
@@ -162,7 +164,8 @@ otherwise passwords travel over the network unencrypted.
 
 ### Snapshots & backups
 - **Snapshots**: named point-in-time copies of everything (items, history, comments, links, sprints,
-  capacity, team, settings). Restore, rename, download or delete.
+  capacity, team, settings). Restore, rename, download or delete. Up to 50 snapshots taken by hand are
+  kept (an administrator can delete old ones to make room); automatic and safety snapshots don't count.
 - **Automatic snapshots** on a schedule with retention (default: daily, keep 14).
 - A **safety snapshot** is always taken before a restore, import or reset, so every one of those can be undone.
 - **Export** the whole project as a JSON file and **import** it (or a downloaded snapshot) elsewhere.

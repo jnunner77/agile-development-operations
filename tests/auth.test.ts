@@ -161,6 +161,21 @@ describe('sign-in', () => {
     expect(res.body.result.createdBy).toBe('Ada Admin');
   });
 
+  it('forgets failed sign-ins after a quiet period and sweeps records of guessed usernames', async () => {
+    await setup();
+    const fail = (username: string) => request(app).post('/api/auth/login').send({ username, password: 'nope nope' });
+    for (let i = 0; i < 4; i++) expect((await fail('ada')).status).toBe(401);
+    clock += 16 * 60_000; // longer than the window: those four are forgotten
+    for (let i = 0; i < 4; i++) expect((await fail('ada')).status).toBe(401);
+    expect((await request(app).post('/api/auth/login').send({ username: 'ada', password: 'correct horse' })).body.status).toBe('ok');
+
+    for (let i = 0; i < 50; i++) await fail(`guess${i}`);
+    expect(auth.trackedFailures).toBe(50);
+    clock += 16 * 60_000;
+    await fail('one-more');
+    expect(auth.trackedFailures).toBe(1);
+  });
+
   it('rejects wrong passwords and locks the username after repeated failures', async () => {
     await setup();
     await signIn('ada');

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Database, SnapshotKind, SnapshotMeta } from '../shared/types';
-import { notFound } from './errors';
+import { MAX_MANUAL_SNAPSHOTS, type Database, type SnapshotKind, type SnapshotMeta } from '../shared/types';
+import { badRequest, notFound } from './errors';
 import { normalizeDatabase } from './schema';
 import type { Store } from './store';
 
@@ -46,6 +46,9 @@ export class SnapshotManager {
   }
 
   create(name: string, description: string, kind: SnapshotKind, createdBy: string): SnapshotMeta {
+    if (kind === 'manual' && this.list().filter((m) => m.kind === 'manual').length >= MAX_MANUAL_SNAPSHOTS) {
+      throw badRequest(`There are already ${MAX_MANUAL_SNAPSHOTS} snapshots taken by hand. An administrator can delete old ones to make room.`);
+    }
     const data = this.store.db;
     const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
     const meta: SnapshotMeta = {

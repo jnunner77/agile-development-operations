@@ -208,6 +208,9 @@ export interface RecycledItem {
 
 export type SnapshotKind = 'manual' | 'auto' | 'pre-restore' | 'pre-import' | 'pre-reset';
 
+/** Snapshots people take themselves (not automatic or safety ones) are capped at this many. */
+export const MAX_MANUAL_SNAPSHOTS = 50;
+
 export interface SnapshotMeta {
   id: string;
   name: string;

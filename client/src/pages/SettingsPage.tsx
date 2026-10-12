@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { formatShortDate, workingDaysBetween } from '../../../shared/dates';
 import { sprintTimeframe } from '../../../shared/sprints';
-import type { Member, SnapshotMeta, Sprint } from '../../../shared/types';
+import { MAX_MANUAL_SNAPSHOTS, type Member, type SnapshotMeta, type Sprint } from '../../../shared/types';
 import { api } from '../api';
 import { Avatar, EmptyState, Modal, StateBadge, confirmDialog } from '../components/common';
 import { Icon, TypeIcon } from '../components/Icon';
@@ -488,7 +488,10 @@ function BackupSettings() {
     <div className="settings-stack">
       <div className="settings-card">
         <h2>Take a snapshot</h2>
-        <p className="muted small">A snapshot is a point-in-time copy of everything: work items (with history and comments), links, sprints, capacity, team and settings. Restore it at any time.</p>
+        <p className="muted small">
+          A snapshot is a point-in-time copy of everything: work items (with history and comments), links, sprints, capacity, team and settings. Restore it at any time. You can keep up to{' '}
+          {MAX_MANUAL_SNAPSHOTS} snapshots taken here; an administrator can delete old ones to make room. Automatic and safety snapshots don't count.
+        </p>
         <form className="form-row snapshot-form" onSubmit={create}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Before sprint 4 planning)" maxLength={200} aria-label="Snapshot name" />
           <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" maxLength={2000} aria-label="Snapshot description" />

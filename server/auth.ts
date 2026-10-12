@@ -79,6 +79,10 @@ const SESSION_MAX_AGE_MS = 24 * 60 * 60_000;
 /** Oldest sessions are dropped beyond this many per person. */
 const MAX_SESSIONS_PER_MEMBER = 20;
 const LOCK_MS = 5 * 60_000;
+/** A username's failed attempts are forgotten after this long without another one. */
+const FAILURE_WINDOW_MS = 15 * 60_000;
+/** Forgotten failure records are swept at most this often. */
+const SWEEP_EVERY_MS = 60_000;
 const DAY_MS = 86_400_000;
 
 const invalidLogin = () => new HttpError(401, 'Incorrect username or password');
@@ -112,7 +116,8 @@ export class AuthManager {
   private data: AuthFile;
   private readonly file: string;
   private readonly sessions = new Map<string, { memberId: string; lastSeen: number; createdAt: number }>();
-  private readonly failures = new Map<string, { count: number; lockedUntil: number }>();
+  private readonly failures = new Map<string, { count: number; lockedUntil: number; last: number }>();
+  private lastSweep = 0;
   readonly overridden: boolean;
   private readonly now: () => number;
   /** API tokens for scripts and assistants. */
@@ -198,11 +203,25 @@ export class AuthManager {
 
   private recordFailure(key: string) {
     const now = this.now();
-    const f = this.failures.get(key) ?? { count: 0, lockedUntil: 0 };
-    if (f.lockedUntil && f.lockedUntil <= now) Object.assign(f, { count: 0, lockedUntil: 0 });
+    this.sweepFailures(now);
+    const f = this.failures.get(key) ?? { count: 0, lockedUntil: 0, last: 0 };
+    if ((f.lockedUntil && f.lockedUntil <= now) || now - f.last > FAILURE_WINDOW_MS) Object.assign(f, { count: 0, lockedUntil: 0 });
     f.count++;
+    f.last = now;
     if (f.count >= MAX_FAILURES) Object.assign(f, { count: 0, lockedUntil: now + LOCK_MS });
     this.failures.set(key, f);
+  }
+
+  /** Drop records of usernames that aren't locked and haven't failed for a while (e.g. guessed ones). */
+  private sweepFailures(now: number) {
+    if (now - this.lastSweep < SWEEP_EVERY_MS) return;
+    this.lastSweep = now;
+    for (const [key, f] of this.failures) if (f.lockedUntil <= now && now - f.last > FAILURE_WINDOW_MS) this.failures.delete(key);
+  }
+
+  /** How many usernames have failed sign-in records (for tests and diagnostics). */
+  get trackedFailures() {
+    return this.failures.size;
   }
 
   private lockedUntil(member: Member): string | null {
