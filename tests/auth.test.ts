@@ -291,3 +291,86 @@ describe('deployment behind a proxy', () => {
     expect(await cookieFor(proxied)).toMatch(/Secure/);
   });
 });
+
+describe('comments', () => {
+  /** A work item with a comment by `agent`; returns the paths to change that comment. */
+  async function commentBy(agent: request.Agent, text = 'I approve') {
+    const item = (await agent.post('/api/workitems').send({ type: 'Task', title: 'Discussed' })).body.result as { id: number };
+    const comment = (await agent.post(`/api/workitems/${item.id}/comments`).send({ text })).body.result as { id: string; authorId: string };
+    return { item, comment, url: `/api/workitems/${item.id}/comments/${comment.id}` };
+  }
+
+  it('can only be changed by their author or an administrator while sign-in is on', async () => {
+    const { ada, bo } = await setup();
+    const admin = await signIn('ada');
+    const user = await signIn('bo');
+
+    const adas = await commentBy(admin);
+    expect(adas.comment.authorId).toBe(ada.id);
+    const edit = await user.patch(adas.url).send({ text: 'I reject' });
+    expect(edit.status).toBe(403);
+    expect(edit.body.error).toMatch(/author or an administrator/);
+    expect((await user.delete(adas.url)).status).toBe(403);
+    expect(store.db.workItems.find((w) => w.id === adas.item.id)?.comments[0].text).toBe('I approve');
+    expect((await admin.patch(adas.url).send({ text: 'I approve, with changes' })).status).toBe(200);
+
+    const bos = await commentBy(user, 'Mine');
+    expect(bos.comment.authorId).toBe(bo.id);
+    expect((await user.patch(bos.url).send({ text: 'Still mine' })).status).toBe(200);
+    // Administrators can change anyone's comment.
+    expect((await admin.patch(bos.url).send({ text: 'Moderated' })).status).toBe(200);
+    expect((await admin.delete(bos.url)).status).toBe(200);
+  });
+
+  it('from before authors were recorded can only be changed by administrators', async () => {
+    await setup();
+    const admin = await signIn('ada');
+    const user = await signIn('bo');
+    const { item } = await commentBy(admin);
+    store.transact('test', undefined, (tx) => {
+      tx.item(item.id).comments.push({ id: 'old', author: 'Bo User', text: 'Written long ago', createdAt: tx.now, editedAt: null });
+    });
+    const url = `/api/workitems/${item.id}/comments/old`;
+    expect((await user.patch(url).send({ text: 'Rewritten' })).status).toBe(403);
+    expect((await user.delete(url)).status).toBe(403);
+    expect((await admin.patch(url).send({ text: 'Rewritten' })).status).toBe(200);
+  });
+
+  it('can only be changed by an API token acting as their author, never as an administrator', async () => {
+    await setup();
+    const admin = await signIn('ada');
+    const user = await signIn('bo');
+    const bearer = async (agent: request.Agent) => {
+      const token = (await agent.post('/api/auth/tokens').send({ name: 'script', scope: 'write' })).body.token as string;
+      return { Authorization: `Bearer ${token}` };
+    };
+    const adaToken = await bearer(admin);
+    const boToken = await bearer(user);
+    const adas = await commentBy(admin);
+    const bos = await commentBy(user);
+    expect((await request(app).patch(bos.url).set(boToken).send({ text: 'By my script' })).status).toBe(200);
+    expect((await request(app).patch(adas.url).set(boToken).send({ text: 'Rewritten' })).status).toBe(403);
+    // A token acting as an administrator still can't change other people's comments.
+    expect((await request(app).delete(bos.url).set(adaToken)).status).toBe(403);
+    // Comments made with a token belong to the token's member.
+    const viaToken = (await request(app).post(`/api/workitems/${bos.item.id}/comments`).set(boToken).send({ text: 'From a script' })).body.result;
+    expect(viaToken.authorId).toBe(store.db.members.find((m) => m.username === 'bo')?.id);
+  });
+
+  it('can be changed by anyone while sign-in is off, as before', async () => {
+    const ada = await member('Ada Admin', 'ada');
+    const bo = await member('Bo User', 'bo');
+    const item = (await request(app).post('/api/workitems').send({ type: 'Task', title: 'Open' })).body.result as { id: number };
+    const comment = (await request(app).post(`/api/workitems/${item.id}/comments`).set('X-User', ada.id).send({ text: 'Hello' })).body.result;
+    expect(comment.authorId).toBe(ada.id);
+    const url = `/api/workitems/${item.id}/comments/${comment.id}`;
+    expect((await request(app).patch(url).set('X-User', bo.id).send({ text: 'Edited' })).status).toBe(200);
+    expect((await request(app).delete(url)).status).toBe(200);
+    // X-User may also name the member (scripts do), as long as only one member has that name.
+    const byName = (await request(app).post(`/api/workitems/${item.id}/comments`).set('X-User', 'Bo User').send({ text: 'By name' })).body.result;
+    expect(byName.authorId).toBe(bo.id);
+    await member('Bo User', 'bo2');
+    const ambiguous = (await request(app).post(`/api/workitems/${item.id}/comments`).set('X-User', 'Bo User').send({ text: 'Which Bo?' })).body.result;
+    expect(ambiguous.authorId).toBeNull();
+  });
+});

@@ -113,6 +113,8 @@ Off by default, so the app works as before with a "who am I" picker. To turn it 
 - **Session timeout**: people are signed out after 60 minutes of inactivity by default
   (configurable, 5 minutes to 7 days). Restarting the server signs everyone out.
 - **Lockout**: 5 wrong passwords lock that username for 5 minutes.
+- **Comments**: people can edit or delete only their own comments; administrators can change
+  anyone's. API tokens can change only the comments of the member they act as.
 - **Administrators** can change these settings, set a temporary or permanent password for anyone,
   reset a password (the person can't sign in until an administrator sets a new one), make others administrators,
   and are the only ones who can change team members, project settings, restore snapshots, import

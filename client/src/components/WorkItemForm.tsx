@@ -15,7 +15,7 @@ import {
   type WorkItemType,
 } from '../../../shared/process';
 import { sprintTimeframe } from '../../../shared/sprints';
-import type { WorkItem } from '../../../shared/types';
+import type { Comment, WorkItem } from '../../../shared/types';
 import { api, type WorkItemFields } from '../api';
 import { FIELD_LABELS, HTML_FIELDS, formatDateTime, formatFieldValue, formatHours, timeAgo } from '../lib/format';
 import { rollup, useChildrenMap, useItemsById, useSortedSprints, useToday } from '../lib/hooks';
@@ -726,6 +726,12 @@ function Discussion({ item }: { item: WorkItem }) {
   const [key, setKey] = useState(0);
   const members = useStore((s) => s.members);
   const currentUser = useStore((s) => s.members.find((m) => m.id === s.currentUserId));
+  const auth = useStore((s) => s.auth);
+  // Matches the server: with sign-in on, only the author or an administrator may change a comment.
+  const mayChange = (c: Comment) => {
+    if (auth?.enabled) return !!auth.user && (auth.user.isAdmin || (!!c.authorId && c.authorId === auth.user.memberId));
+    return c.authorId ? c.authorId === currentUser?.id : currentUser?.name === c.author;
+  };
   const post = async () => {
     if (!text.replace(/<[^>]*>|&nbsp;|\s/g, '')) return;
     await api.addComment(item.id, text);
@@ -747,7 +753,7 @@ function Discussion({ item }: { item: WorkItem }) {
         </div>
         {comments.map((c) => (
           <div key={c.id} className="comment">
-            <Avatar member={members.find((m) => m.name === c.author)} size={28} />
+            <Avatar member={members.find((m) => (c.authorId ? m.id === c.authorId : m.name === c.author))} size={28} />
             <div className="comment-body">
               <div className="comment-meta">
                 <strong>{c.author}</strong>
@@ -755,7 +761,7 @@ function Discussion({ item }: { item: WorkItem }) {
                   commented {timeAgo(c.createdAt)}
                   {c.editedAt && ' (edited)'}
                 </span>
-                {currentUser?.name === c.author && editing !== c.id && (
+                {mayChange(c) && editing !== c.id && (
                   <span className="comment-actions">
                     <button
                       className="icon-btn"

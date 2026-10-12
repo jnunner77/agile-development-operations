@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { z, ZodError } from 'zod';
 import { HttpError, badRequest } from './errors';
+import type { Member } from '../shared/types';
 import type { Store, Tx } from './store';
 import type { SnapshotManager } from './snapshots';
 import { emptyDatabase } from './schema';
@@ -40,6 +41,26 @@ function userName(store: Store, req: Request): string {
   if (!raw) return 'Anonymous';
   const value = decodeURIComponent(raw);
   return store.db.members.find((m) => m.id === value)?.name ?? value.slice(0, 128);
+}
+
+/**
+ * The member making the request: the signed-in one or the API token's, else the one X-User names
+ * (by id, or by a name only one member has).
+ */
+function callerId(store: Store, req: Request, res: Response): string | null {
+  const member = res.locals.authMember as Member | null | undefined;
+  if (member) return member.id;
+  const raw = req.header('x-user');
+  if (!raw) return null;
+  let value: string;
+  try {
+    value = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  if (store.db.members.some((m) => m.id === value)) return value;
+  const named = store.db.members.filter((m) => m.name === value);
+  return named.length === 1 ? named[0].id : null;
 }
 
 const intParam = (value: string | string[] | undefined) => {
@@ -95,11 +116,21 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
 
   /** Wrap a mutation: run it in a transaction and reply with the resulting delta. */
   const mutate =
-    <T>(fn: (tx: Tx, req: Request) => T, status = 200) =>
+    <T>(fn: (tx: Tx, req: Request, res: Response) => T, status = 200) =>
     (req: Request, res: Response) => {
-      const { delta, result } = store.transact(userName(store, req), req.header('x-client-id'), (tx) => fn(tx, req));
+      const { delta, result } = store.transact(userName(store, req), req.header('x-client-id'), (tx) => fn(tx, req, res));
       res.status(status).json({ delta, result });
     };
+
+  /**
+   * With sign-in on, or for an API token, only a comment's author or an administrator (never a
+   * token) may change it. With sign-in off anyone may, as with everything else.
+   */
+  const commentActor = (req: Request, res: Response): wi.CommentActor => {
+    const token = !!res.locals.apiToken;
+    const restricted = auth.enabled || token;
+    return { memberId: callerId(store, req, res), mayModerate: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)) };
+  };
 
   api.get('/bootstrap', (_req, res) => {
     res.json({ db: store.db, serverTime: new Date().toISOString() });
@@ -173,15 +204,15 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
   );
   api.post(
     '/workitems/:id/comments',
-    mutate((tx, req) => wi.addComment(tx, intParam(req.params.id), wi.commentSchema.parse(req.body).text), 201),
+    mutate((tx, req, res) => wi.addComment(tx, intParam(req.params.id), wi.commentSchema.parse(req.body).text, callerId(store, req, res)), 201),
   );
   api.patch(
     '/workitems/:id/comments/:commentId',
-    mutate((tx, req) => wi.editComment(tx, intParam(req.params.id), String(req.params.commentId), wi.commentSchema.parse(req.body).text)),
+    mutate((tx, req, res) => wi.editComment(tx, intParam(req.params.id), String(req.params.commentId), wi.commentSchema.parse(req.body).text, commentActor(req, res))),
   );
   api.delete(
     '/workitems/:id/comments/:commentId',
-    mutate((tx, req) => wi.deleteComment(tx, intParam(req.params.id), String(req.params.commentId))),
+    mutate((tx, req, res) => wi.deleteComment(tx, intParam(req.params.id), String(req.params.commentId), commentActor(req, res))),
   );
   api.post(
     '/workitems/:id/hyperlinks',

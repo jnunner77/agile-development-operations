@@ -10,9 +10,9 @@ import {
   stateDef,
   type LinkType,
 } from '../shared/process';
-import type { FieldChange, WorkItem, WorkItemLink } from '../shared/types';
+import type { Comment, FieldChange, WorkItem, WorkItemLink } from '../shared/types';
 import { isValidDate } from '../shared/dates';
-import { badRequest, notFound } from './errors';
+import { HttpError, badRequest, notFound } from './errors';
 import { blankWorkItem } from './schema';
 import type { Tx } from './store';
 
@@ -431,9 +431,20 @@ export function removeLink(tx: Tx, linkId: string) {
   }
 }
 
-export function addComment(tx: Tx, id: number, text: string) {
+/** Who is changing a comment: their member id, and whether they may change anyone's. */
+export interface CommentActor {
+  memberId: string | null;
+  mayModerate: boolean;
+}
+
+function assertMayChange(comment: Comment, actor: CommentActor) {
+  if (actor.mayModerate || (!!comment.authorId && comment.authorId === actor.memberId)) return;
+  throw new HttpError(403, "Only the comment's author or an administrator can change it");
+}
+
+export function addComment(tx: Tx, id: number, text: string, authorId: string | null = null) {
   const item = tx.item(id);
-  const comment = { id: randomUUID(), author: tx.user, text, createdAt: tx.now, editedAt: null };
+  const comment: Comment = { id: randomUUID(), author: tx.user, authorId, text, createdAt: tx.now, editedAt: null };
   item.comments.push(comment);
   item.changedAt = tx.now;
   item.changedBy = tx.user;
@@ -441,21 +452,23 @@ export function addComment(tx: Tx, id: number, text: string) {
   return comment;
 }
 
-export function editComment(tx: Tx, id: number, commentId: string, text: string) {
+export function editComment(tx: Tx, id: number, commentId: string, text: string, actor: CommentActor) {
   const item = tx.item(id);
   const comment = item.comments.find((c) => c.id === commentId);
   if (!comment) throw notFound('Comment');
+  assertMayChange(comment, actor);
   comment.text = text;
   comment.editedAt = tx.now;
   tx.touchItem(id);
   return comment;
 }
 
-export function deleteComment(tx: Tx, id: number, commentId: string) {
+export function deleteComment(tx: Tx, id: number, commentId: string, actor: CommentActor) {
   const item = tx.item(id);
-  const before = item.comments.length;
+  const comment = item.comments.find((c) => c.id === commentId);
+  if (!comment) throw notFound('Comment');
+  assertMayChange(comment, actor);
   item.comments = item.comments.filter((c) => c.id !== commentId);
-  if (item.comments.length === before) throw notFound('Comment');
   tx.touchItem(id);
 }
 
