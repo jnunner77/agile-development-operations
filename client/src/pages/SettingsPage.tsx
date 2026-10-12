@@ -490,7 +490,7 @@ function BackupSettings() {
         <h2>Take a snapshot</h2>
         <p className="muted small">
           A snapshot is a point-in-time copy of everything: work items (with history and comments), links, sprints, capacity, team and settings. Restore it at any time. You can keep up to{' '}
-          {MAX_MANUAL_SNAPSHOTS} snapshots taken here; delete old ones to take more. Automatic and safety snapshots don't count.
+          {MAX_MANUAL_SNAPSHOTS} snapshots taken here; an administrator can delete old ones to make room. Automatic and safety snapshots don't count.
         </p>
         <form className="form-row snapshot-form" onSubmit={create}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Before sprint 4 planning)" maxLength={200} aria-label="Snapshot name" />
