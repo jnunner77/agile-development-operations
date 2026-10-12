@@ -374,7 +374,8 @@ export class AuthManager {
 
   updateSettings(patch: z.infer<typeof authSettingsSchema>) {
     const next = { ...this.data.settings, ...patch };
-    if (next.enabled && !this.overridden && !this.hasUsableAdmin(this.store.db.members)) {
+    // Also while AUTH_DISABLED forces sign-in off: saving it on would lock everyone out at the next restart.
+    if (next.enabled && !this.hasUsableAdmin(this.store.db.members)) {
       throw badRequest('Before turning on sign-in, make at least one active team member with a username an administrator and give them a password (Set password…).');
     }
     this.data.settings = next;

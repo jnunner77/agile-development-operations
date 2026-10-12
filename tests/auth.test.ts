@@ -253,6 +253,20 @@ describe('sign-in', () => {
     expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
     expect((await request(forced).get('/api/bootstrap')).status).toBe(200);
   });
+
+  it('can only be saved as on, even while forced off, when an administrator has a password', async () => {
+    const ada = await member('Ada Admin', 'ada');
+    await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
+    const forcedAuth = new AuthManager(store, { disabled: true });
+    const forced = createApp({ store, snapshots: new SnapshotManager(store), auth: forcedAuth, security: false });
+    const res = await request(forced).put('/api/auth/settings').send({ enabled: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/password/);
+    expect(forcedAuth.settings.enabled).toBe(false);
+    await request(forced).post(`/api/auth/accounts/${ada.id}/password`).send({ password: 'correct horse', mustChange: false });
+    expect((await request(forced).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
+    expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
+  });
 });
 
 describe('deployment behind a proxy', () => {
