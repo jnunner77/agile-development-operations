@@ -152,7 +152,9 @@ otherwise passwords travel over the network unencrypted.
 ### API tokens
 - **Project settings → API tokens** creates tokens for scripts and assistants (such as Claude).
   A token acts as one team member, is read-only or read & write, expires (up to a year) and
-  can be revoked. Only a hash is stored, outside the database, snapshots and backups.
+  can be revoked. Only a hash is stored, outside the database, snapshots and backups. Each member
+  can have 20 active tokens; expired ones stop counting at once and are removed 30 days after
+  they expire.
 - Use it as `Authorization: Bearer <token>`. Tokens can't administer the project or create
   more tokens. See [`docs/api.md`](docs/api.md) for the endpoints.
 - When an administrator sets or resets someone's password, that person's tokens are revoked too
