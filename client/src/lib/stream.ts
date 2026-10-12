@@ -26,6 +26,11 @@ export class StreamVersion {
  * Fetch the whole database, but never one older than the page already shows: a live update (or
  * the response to our own change) can arrive while the request is in flight, and replacing the
  * page with the older copy would undo it. Such a copy is dropped and fetched again, a few times.
+ *
+ * After the last try the copy is used even if it is still older. That keeps a page whose server
+ * really is behind (its data was wiped and started over) from being stuck; the price is that if
+ * live updates overtook all three loads, those items show their older state until they change
+ * again or the page reconnects. Each load takes milliseconds, so that needs a very busy stream.
  */
 export async function loadFresh<T extends { version: number }>(fetchDb: () => Promise<T>, pageVersion: () => number, attempts = 3): Promise<T> {
   let db = await fetchDb();
