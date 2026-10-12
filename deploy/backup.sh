@@ -7,7 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST="${1:-$HOME/boards-backups}"
 KEEP="${KEEP:-14}"
+# Archives hold the sign-in accounts, API token hashes and the GitHub webhook secret: only the
+# owner may read them. Also tightens the folder and archives written before this was set.
+umask 077
 mkdir -p "$DEST"
+chmod 700 "$DEST"
+find "$DEST" -maxdepth 1 -name 'boards-*.tar.gz*' -type f -exec chmod 600 {} +
 
 file="$DEST/boards-$(date -u +%Y%m%d-%H%M%S).tar.gz"
 docker compose exec -T app tar czf - -C /data . > "$file.partial"

@@ -157,6 +157,8 @@ docker compose up -d
 
 **Backups.** Snapshots live on the VM's disk, so also copy data off it. `deploy/backup.sh`
 archives the database, snapshots and sign-in accounts to `~/boards-backups`, keeping the latest 14.
+The folder and archives are readable only by you (they hold password hashes, API token hashes and
+the GitHub webhook secret); each run also tightens archives written before this was in place.
 `deploy/ops` runs it nightly and copies the archive to Cloud Storage. Without `deploy/ops`, run it
 from cron:
 
