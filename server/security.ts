@@ -283,7 +283,8 @@ export class Security {
       return res.status(403).json({ error: 'Access from your network is temporarily blocked.' });
     }
     // Routers rewrite req.url while handling a request, so remember the original path now.
-    const path = req.path;
+    // Lower-cased because routing ignores case (/api/AUTH/login is the sign-in route too).
+    const path = req.path.toLowerCase();
     if (path === '/api/health') return next();
     this.check(this.ipBucket, ip, ip);
     res.on('finish', () => {

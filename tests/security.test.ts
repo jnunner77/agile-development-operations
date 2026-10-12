@@ -130,6 +130,15 @@ describe('temporary bans', () => {
     expect((await request(app).get('/api/auth/status').set(from('9.9.9.9'))).status).toBe(200);
   });
 
+  it('counts failed sign-ins however the path is spelled', async () => {
+    const { app } = build({ signIn: { burst: 100, perMinute: 100 }, ban: { authFailures: 4, violations: 1000, notFound: 1000, windowMs: 60_000, durationMs: 10 * 60_000 } });
+    await enableSignIn(app);
+    for (const url of ['/api/AUTH/login', '/api/Auth/Login', '/api/auth/LOGIN', '/API/auth/login']) {
+      expect((await request(app).post(url).set(from('9.9.9.8')).send({ username: 'nobody', password: 'nope nope' })).status, url).toBe(401);
+    }
+    expect((await request(app).get('/api/auth/status').set(from('9.9.9.8'))).status).toBe(403);
+  });
+
   it('blocks clients probing for API endpoints', async () => {
     const { app } = build({ ban: { notFound: 5, authFailures: 1000, violations: 1000, windowMs: 60_000, durationMs: 60_000 } });
     for (let i = 0; i < 5; i++) await request(app).get(`/api/admin${i}`).set(from('11.1.1.1'));
