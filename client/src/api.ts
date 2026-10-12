@@ -15,6 +15,7 @@ import type {
 import type { LinkType, WorkItemType } from '../../shared/process';
 import type { ApiTokenInfo, ApiTokenScope, AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
 import type { GitHubAdminView, GitHubSettings } from '../../shared/integrations';
+import { StreamVersion } from './lib/stream';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 
 const clientId = crypto.randomUUID();
@@ -68,9 +69,12 @@ async function mutate<T = unknown>(method: string, url: string, body?: unknown, 
   }
 }
 
+const streamVersion = new StreamVersion();
+
 export async function loadAll() {
   const { db } = await request<{ db: Database }>('GET', '/bootstrap');
   setDatabase(db);
+  streamVersion.loaded(db.version);
 }
 
 let source: EventSource | null = null;
@@ -81,11 +85,13 @@ export function connectEvents() {
   source.addEventListener('hello', (e) => {
     useStore.setState({ connection: 'live' });
     const { version } = JSON.parse((e as MessageEvent).data) as { version: number };
-    // We may have missed changes while disconnected.
-    if (version !== useStore.getState().version) void loadAll();
+    // We may have missed changes while disconnected. Compare with what the stream and full loads
+    // brought, not the page's version: our own changes' responses can be newer than both.
+    if (streamVersion.missedChanges(version)) void loadAll();
   });
   source.onmessage = (e) => {
     const { delta } = JSON.parse(e.data) as { delta: Delta; origin?: string };
+    streamVersion.received(delta.version);
     if (applyDelta(delta)) void loadAll();
   };
   source.onerror = () => {
