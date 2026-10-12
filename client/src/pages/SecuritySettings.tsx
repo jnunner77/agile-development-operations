@@ -63,7 +63,7 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    // API tokens made while sign-in was off could have been made by anyone: list them and
+    // API tokens made while sign-in was off could have been made by anyone: list all tokens and
     // offer to revoke them (ticked by default) before turning sign-in on.
     let revoke: ApiTokenInfo[] = [];
     if (enabled && !view.settings.enabled) {
@@ -90,7 +90,7 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
             {tokens.length > 0 && (
               <div className="callout callout-warn callout-stack">
                 <p>
-                  <Icon name="warning" size={14} /> {tokens.length === 1 ? 'This API token keeps' : `These ${tokens.length} API tokens keep`} working after sign-in is on. While sign-in was off, anyone could create them:
+                  <Icon name="warning" size={14} /> {tokens.length === 1 ? 'This API token keeps' : `These ${tokens.length} API tokens keep`} working after sign-in is on. Any made while sign-in was off could have been made by anyone:
                 </p>
                 <ul>
                   {tokens.map((t) => (
