@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { TYPE_DEFS, defaultState, type BacklogLevel, type WorkItemType } from '../../../shared/process';
 import { formatShortDate } from '../../../shared/dates';
 import type { WorkItem } from '../../../shared/types';
 import { api } from '../api';
-import { AssigneePicker, Tags, useMenu } from '../components/common';
+import { AssigneePicker, Tags, useMenu, type MenuItem } from '../components/common';
 import { FilterBar } from '../components/FilterBar';
 import { Icon, TypeIcon } from '../components/Icon';
 import { useWorkItemDialog } from '../components/WorkItemForm';
@@ -39,6 +39,9 @@ function Board({ level }: { level: BacklogLevel }) {
   const itemMenu = useItemMenu();
   // Which cards show their child items, remembered for the current user.
   const folds = useFolds(`board.${level.key}`, false, (id) => itemsById.has(Number(id)));
+  // Selected cards (click, Ctrl/⌘-click to toggle, Shift-click for a range in a column), for bulk actions.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [anchor, setAnchor] = useState<number | null>(null);
 
   const columns = useMemo(() => {
     const byColumn = new Map<string, WorkItem[]>(level.columns.map((c) => [c, []]));
@@ -49,19 +52,98 @@ function Board({ level }: { level: BacklogLevel }) {
     return byColumn;
   }, [items, level, filters]);
 
+  // The cards on screen in each column (Done is cut off unless "Show all completed items" is on).
+  const shown = useMemo(
+    () => new Map(level.columns.map((c) => [c, c === 'Done' && !opts.showAllDone ? (columns.get(c) ?? []).slice(0, DONE_LIMIT) : (columns.get(c) ?? [])])),
+    [columns, level.columns, opts.showAllDone],
+  );
+  const columnOf = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const [c, list] of shown) for (const w of list) map.set(w.id, c);
+    return map;
+  }, [shown]);
+  // Only cards still on the board count: deleted, filtered out or moved off this level drop out.
+  const selectedItems = [...selected].filter((id) => columnOf.has(id)).map((id) => itemsById.get(id)!).sort((a, b) => a.stackRank - b.stackRank);
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setAnchor(null);
+  };
+
+  useEffect(() => {
+    if (!selected.size) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.modal-backdrop, .menu')) return;
+      clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected.size]);
+
+  const onCardClick = (e: React.MouseEvent, w: WorkItem) => {
+    const toggle = e.ctrlKey || e.metaKey;
+    const column = columnOf.get(w.id);
+    if (e.shiftKey && anchor != null && columnOf.get(anchor) === column) {
+      const ids = (shown.get(column!) ?? []).map((c) => c.id);
+      const a = ids.indexOf(anchor);
+      const b = ids.indexOf(w.id);
+      const range = ids.slice(Math.min(a, b), Math.max(a, b) + 1);
+      setSelected(new Set(toggle ? [...selected, ...range] : range));
+      return;
+    }
+    if (toggle || e.shiftKey) {
+      const next = new Set(selected);
+      if (next.has(w.id)) next.delete(w.id);
+      else next.add(w.id);
+      setSelected(next);
+    } else setSelected(new Set([w.id]));
+    setAnchor(w.id);
+  };
+
+  /** Every card in the columns the given items are in, so "Move to top/bottom" works per column. */
+  const reorderWithin = (list: WorkItem[]) => [...new Set(list.map((w) => columnOf.get(w.id)!))].flatMap((c) => columns.get(c) ?? []);
+
+  const bulkMenu = (list: WorkItem[]) => itemMenu.build(list, { reorderWithin: reorderWithin(list) });
+
+  const cardMenu = (w: WorkItem): MenuItem[] => {
+    const inSelection = selected.has(w.id) && selectedItems.length > 1;
+    const list = inSelection ? selectedItems : [w];
+    // Selecting through the menu lets touch screens, which have no Ctrl or Shift, act on several cards.
+    const selection: MenuItem[] = selected.has(w.id)
+      ? [{ label: 'Deselect', icon: 'close', onClick: () => setSelected((s) => new Set([...s].filter((id) => id !== w.id))) }]
+      : [{ label: selectedItems.length ? `Add to selection (${selectedItems.length + 1})` : 'Select', icon: 'check', onClick: () => setSelected((s) => new Set(s).add(w.id)) }];
+    if (selectedItems.length > 1) selection.push({ label: 'Clear selection', icon: 'clear', onClick: clearSelection });
+    const actions = bulkMenu(list);
+    return [...(inSelection ? [{ label: `${list.length} selected items`, disabled: true }] : []), ...selection, { divider: true }, ...actions];
+  };
+
+  const onDragStart = (e: React.DragEvent, w: WorkItem) => {
+    // Dragging a selected card carries the whole selection with it.
+    startDrag(e, selected.has(w.id) ? selectedItems.map((s) => s.id) : [w.id]);
+  };
+
   const onDrop = async (column: string) => {
     const target = drop;
     setDrop(null);
     const ids = draggedIds();
     endDrag();
-    const dragged = ids.map((id) => itemsById.get(id)).filter((w): w is WorkItem => !!w);
+    const dragged = ids
+      .map((id) => itemsById.get(id))
+      .filter((w): w is WorkItem => !!w)
+      .sort((a, b) => a.stackRank - b.stackRank);
     const cards = (columns.get(column) ?? []).filter((c) => !ids.includes(c.id));
+    // Dropped cards keep their order: each goes before the target, or after the one placed before it.
+    let after = target?.id != null ? (target.pos === 'after' ? target.id : null) : (cards[cards.length - 1]?.id ?? null);
+    const before = target?.id != null && target.pos === 'before' ? target.id : null;
     for (const w of dragged) {
       const input: Parameters<typeof api.moveWorkItem>[1] = {};
       if (w.state !== column) input.state = column;
       if (column !== 'Done') {
-        if (target?.id != null) input[target.pos === 'before' ? 'beforeId' : 'afterId'] = target.id;
-        else if (cards.length) input.afterId = cards[cards.length - 1].id;
+        if (before != null) input.beforeId = before;
+        else if (after != null) {
+          input.afterId = after;
+          after = w.id;
+        }
       }
       if (Object.keys(input).length) await api.moveWorkItem(w.id, input);
     }
@@ -79,6 +161,16 @@ function Board({ level }: { level: BacklogLevel }) {
         <button className="btn btn-primary-ghost" onClick={() => setAdding(true)}>
           <Icon name="add" size={14} /> New item
         </button>
+        {selectedItems.length > 0 && (
+          <>
+            <button className="btn" onClick={(e) => menu.openAt(e, bulkMenu(selectedItems))}>
+              {selectedItems.length} selected <Icon name="chevronDown" size={12} />
+            </button>
+            <button className="icon-btn" title="Clear selection" aria-label="Clear selection" onClick={clearSelection}>
+              <Icon name="close" size={14} />
+            </button>
+          </>
+        )}
         <div className="spacer" />
         <button
           className="btn btn-ghost"
@@ -110,7 +202,7 @@ function Board({ level }: { level: BacklogLevel }) {
         <div className="board">
           {level.columns.map((column, colIdx) => {
             const all = columns.get(column) ?? [];
-            const cards = column === 'Done' && !opts.showAllDone ? all.slice(0, DONE_LIMIT) : all;
+            const cards = shown.get(column) ?? [];
             return (
               <div
                 key={column}
@@ -125,6 +217,10 @@ function Board({ level }: { level: BacklogLevel }) {
                 onDrop={(e) => {
                   e.preventDefault();
                   void onDrop(column);
+                }}
+                onClick={(e) => {
+                  // A click on the column's empty space clears the selection.
+                  if (!(e.target as HTMLElement).closest('.card, button, a, input, select, textarea, label')) clearSelection();
                 }}
               >
                 <div className="board-column-header">
@@ -169,6 +265,9 @@ function Board({ level }: { level: BacklogLevel }) {
                       showChildren={opts.showChildren}
                       expanded={folds.isOpen(w.id)}
                       onExpandedChange={(v) => folds.setOpen(w.id, v)}
+                      selected={selected.has(w.id)}
+                      onSelect={(e) => onCardClick(e, w)}
+                      onDragStart={(e) => onDragStart(e, w)}
                       dropPos={drop?.id === w.id ? drop.pos : null}
                       onDragOver={(e) => {
                         if (!draggedIds().length || draggedIds().includes(w.id)) return;
@@ -176,7 +275,7 @@ function Board({ level }: { level: BacklogLevel }) {
                         const pos = dropPosition(e);
                         if (drop?.id !== w.id || drop.pos !== pos) setDrop({ column, id: w.id, pos });
                       }}
-                      onMenu={(e) => menu.openAt(e, itemMenu.build([w], { reorderWithin: all }))}
+                      onMenu={(e) => menu.openAt(e, cardMenu(w))}
                     />
                   ))}
                   {column === 'Done' && !opts.showAllDone && all.length > DONE_LIMIT && (
@@ -201,6 +300,9 @@ function BoardCard({
   showChildren,
   expanded,
   onExpandedChange,
+  selected,
+  onSelect,
+  onDragStart,
   dropPos,
   onDragOver,
   onMenu,
@@ -209,6 +311,9 @@ function BoardCard({
   showChildren: boolean;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  selected: boolean;
+  onSelect: (e: React.MouseEvent) => void;
+  onDragStart: (e: React.DragEvent) => void;
   dropPos: 'before' | 'after' | null;
   onDragOver: (e: React.DragEvent) => void;
   onMenu: (e: React.MouseEvent) => void;
@@ -237,11 +342,29 @@ function BoardCard({
 
   return (
     <div
-      className={`card ${dropPos ? `drop-${dropPos}` : ''}`}
+      className={`card ${selected ? 'selected' : ''} ${dropPos ? `drop-${dropPos}` : ''}`}
       style={{ borderLeftColor: TYPE_DEFS[item.type].color }}
+      aria-selected={selected}
       draggable
-      onDragStart={(e) => startDrag(e, [item.id])}
+      onDragStart={onDragStart}
       onDragEnd={endDrag}
+      onMouseDown={(e) => {
+        // Keep Shift-click from selecting text across cards.
+        if (e.shiftKey) e.preventDefault();
+      }}
+      onClickCapture={(e) => {
+        // Ctrl/⌘- and Shift-clicks select, even on the title or the assignee, instead of opening
+        // them. Links still open in a new tab, and fields keep working.
+        const target = e.target as HTMLElement;
+        if (!(e.ctrlKey || e.metaKey || e.shiftKey) || !e.currentTarget.contains(target) || target.closest('a, input, select, textarea')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(e);
+      }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (e.currentTarget.contains(target) && !target.closest('button, a, input, select, textarea, label')) onSelect(e);
+      }}
       onDragOver={onDragOver}
       onContextMenu={onMenu}
       onDoubleClick={() => open(item.id)}

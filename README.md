@@ -71,13 +71,18 @@ docker compose up -d --build
 - Expand rows to see children; add child items inline with `+`.
 - View options: show **parents** (hierarchy), in-progress items, completed children, items already
   planned in sprints; keyword/type/state/assignee/tag/iteration filters.
-- Multi-select (Ctrl/Shift-click) with bulk move-to-sprint, assign, change state, re-parent, delete.
+- Multi-select (Ctrl/Shift-click) with bulk move-to-sprint, assign, change state, re-parent, add or
+  remove tags, delete.
 - **Planning pane**: drag items onto a sprint to plan them, or onto the backlog to move them back.
   Open child tasks travel with their parent.
 
 ### Boards (Kanban)
 - Column per state for each backlog level; drag cards between columns and reorder within a column.
 - Cards show assignee, effort, iteration, due date (overdue highlighted), tags and a child checklist.
+- Select cards with click, Ctrl/⌘-click (toggle) and Shift-click (a range in a column), or **Select** in
+  a card's menu on touch screens. Drag any selected card to move them all, or use the **N selected**
+  menu to move them to the top or bottom, to an iteration, assign, change state, re-parent, tag or
+  delete them together. Esc clears the selection.
 
 ### Sprints
 - Create, edit (dates & sprint goal) and delete sprints; next sprint dates are suggested.

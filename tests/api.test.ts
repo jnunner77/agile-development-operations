@@ -115,6 +115,21 @@ describe('work items', () => {
     expect(item(open.id).iterationId).toBeNull();
   });
 
+  it('bulk-edits several items at once, adding and removing tags', async () => {
+    const a = await create('Product Backlog Item', { tags: ['Web'] });
+    const b = await create('Bug', { tags: ['web', 'Urgent'] });
+    let res = await request(app).post('/api/workitems/bulk').send({ ids: [a.id, b.id], changes: { state: 'Approved' }, addTags: ['Q3', 'Web'] });
+    expect(res.status).toBe(200);
+    expect(item(a.id).state).toBe('Approved');
+    expect(item(b.id).state).toBe('Approved');
+    expect(item(a.id).tags).toEqual(['Web', 'Q3']);
+    expect(item(b.id).tags).toEqual(['web', 'Urgent', 'Q3']);
+    res = await request(app).post('/api/workitems/bulk').send({ ids: [a.id, b.id], changes: {}, removeTags: ['WEB'] });
+    expect(res.status).toBe(200);
+    expect(item(a.id).tags).toEqual(['Q3']);
+    expect(item(b.id).tags).toEqual(['Urgent', 'Q3']);
+  });
+
   it('reorders by stack rank relative to neighbours', async () => {
     const a = await create('Product Backlog Item');
     const b = await create('Product Backlog Item');
