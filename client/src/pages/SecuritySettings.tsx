@@ -67,6 +67,10 @@ function PolicyCard({ view, onChange }: { view: AuthAdminView; onChange: (v: Aut
     // offer to revoke them (ticked by default) before turning sign-in on.
     let revoke: ApiTokenInfo[] = [];
     if (enabled && !view.settings.enabled) {
+      // The server refuses this too; checking first means no token is revoked for a turn-on that fails.
+      if (!readyAdmins.length) {
+        return toast('Before turning on sign-in, make at least one active team member with a username an administrator and give them a password (Set password…).', 'error');
+      }
       let tokens: ApiTokenInfo[] = [];
       try {
         tokens = (await tokensApi.list()).filter((t) => !t.expired);
