@@ -37,6 +37,8 @@ interface State {
  * stream) and out of order, so an entity is only overwritten by a newer version.
  */
 const entityVersions = new Map<string, number>();
+/** Version of the last full load: it already contains every change up to it. */
+let loadedVersion = 0;
 
 function readUser(): string | null {
   try {
@@ -66,6 +68,7 @@ export const useStore = create<State>(() => ({
 
 export function setDatabase(db: Database) {
   entityVersions.clear();
+  loadedVersion = db.version;
   const s = useStore.getState();
   const userValid = s.currentUserId && db.members.some((m) => m.id === s.currentUserId);
   // With sign-in on, you always act as yourself.
@@ -126,6 +129,8 @@ function mergeList<T, K extends string | number>(
 
 /** Returns true if a full reload is needed. */
 export function applyDelta(delta: Delta): boolean {
+  // Already part of the last full load, which may be newer than this late delta: ignore it.
+  if (delta.version <= loadedVersion) return false;
   if (delta.reset) return true;
   const s = useStore.getState();
   const v = delta.version;
