@@ -17,9 +17,8 @@ ENV NODE_ENV=production \
     DATA_DIR=/data
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY shared ./shared
+COPY src ./src
 COPY server ./server
-COPY tsconfig.json ./
 COPY --from=build /app/dist/client ./dist/client
 # The data directory is owned by the unprivileged user so a fresh volume inherits it.
 RUN mkdir -p /data && chown node:node /data
@@ -28,4 +27,5 @@ VOLUME ["/data"]
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-CMD ["node", "--import", "tsx", "server/index.ts"]
+# Node 22.18+ runs TypeScript directly by stripping the types; no build step or loader.
+CMD ["node", "src/main.ts"]
