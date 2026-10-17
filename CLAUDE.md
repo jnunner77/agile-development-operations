@@ -3,8 +3,8 @@
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
 client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
 architecture in `src/` (shared, domain, application, infrastructure, presentation); the features
-not yet moved there (sign-in, API tokens, GitHub, snapshots) still run on the Express code in
-`server/`. See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
+not yet moved there (GitHub, snapshots and backups) still run on the Express code in `server/`.
+See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
 
@@ -60,15 +60,20 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
     hand-written parsers, and an exhaustive switch (ending in `assertNever`) from error codes to
     HTTP statuses.
   - `src/compose.ts` is the only place that knows the concrete classes.
-  - Who may administer the project is decided in the application (`requireAdmin`); routes that
-    need it check before reading the request, as the Express routes did.
+  - Who may administer the project is decided in the application (`requireAdmin`,
+    `adminAccessOf`); routes that need it check before reading the request, as the Express routes
+    did. Who is calling comes from `IdentifyCaller` (session cookie or API token), and
+    `presentation/sign-in/gate.ts` decides which requests need signing in, also for `server/`.
 - No new runtime dependencies in `src/`. Express and zod remain only in `server/` until the
   features there move into the layers. Move one feature at a time, as the work items slice did.
 - Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`, or
   `store.transact` in `server/`), so it is validated, persisted, recorded in work item history
   and broadcast to browsers as deltas, or not applied at all.
-- Secrets (passwords, webhook secrets) live in their own files in the data directory,
-  never in `db.json`, snapshots, exports or API responses.
+- Secrets (password hashes, API token digests, webhook secrets) live in their own files in the
+  data directory (`auth.json`, `api-tokens.json`, written 0600), never in `db.json`, snapshots,
+  exports or API responses. Sessions and failed sign-in counts stay in memory.
+- No non-null assertions (`!`), `any`, or casts except branding ids at trust boundaries and typing
+  raw JSON in infrastructure (which the domain then validates).
 - Tests: `node:test` tests in `tests/<layer>/` for code in `src/` (domain without fakes;
   application with the in-memory adapters in `src/infrastructure/memory/`). The vitest suites
   in `tests/legacy/` drive the whole app over HTTP; keep them passing.
