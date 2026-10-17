@@ -74,6 +74,8 @@ export function httpFailure(error: AppError): HttpFailure {
       return { status: 400, message: `Work item ${error.targetId} is already linked as ${error.type}` };
     case 'LINK_NOT_FOUND':
       return { status: 404, message: 'Link not found' };
+    case 'DEV_LINK_NOT_FOUND':
+      return { status: 404, message: 'Link not found' };
     case 'DELETED_WORK_ITEM_NOT_FOUND':
       return { status: 404, message: `Deleted work item ${error.id} not found` };
 
@@ -171,6 +173,22 @@ export function httpFailure(error: AppError): HttpFailure {
         status: 403,
         message: error.action === 'create' ? 'Only administrators can create tokens for someone else' : "Only administrators can revoke someone else's token",
       };
+    // GitHub integration
+    case 'REPOSITORY_INVALID':
+      return { status: 400, message: `Repositories must look like owner/name ("${error.value}" doesn't)` };
+    case 'REPOSITORY_NAME_TOO_LONG':
+      return { status: 400, message: `Repository names can be at most ${error.max} characters` };
+    case 'TOO_MANY_REPOSITORIES':
+      return { status: 400, message: `At most ${error.max} repositories can be listed` };
+    case 'WEBHOOK_CLOSED':
+      return { status: 404, message: 'Webhook not found' };
+    case 'INVALID_SIGNATURE':
+      return { status: 401, message: 'Invalid signature' };
+    case 'PAYLOAD_NOT_JSON':
+      return { status: 400, message: 'Payload must be JSON (set the webhook content type to application/json)' };
+    case 'PAYLOAD_INVALID':
+      return { status: 400, message: `Unexpected "${error.event}" payload: ${error.reason}` };
+
     case 'ADMIN_ONLY':
       return {
         status: 403,

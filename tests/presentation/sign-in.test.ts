@@ -25,6 +25,8 @@ describe('the request gate', () => {
   it('needs a session while sign-in is on, except to sign in', () => {
     assert.deepEqual(gate(nobody, 'GET', '/bootstrap'), { kind: 'reject', status: 401, body: { error: 'Please sign in', code: 'signin' } });
     assert.deepEqual(gate(nobody, 'POST', '/AUTH/login'), { kind: 'pass', actAs: null });
+    // GitHub signs its deliveries instead.
+    assert.deepEqual(gate(nobody, 'POST', '/integrations/github/webhook'), { kind: 'pass', actAs: null });
     assert.deepEqual(gate({ ...nobody, member, via: 'session' }, 'POST', '/workitems'), { kind: 'pass', actAs: 'm1' });
     assert.deepEqual(gate({ ...nobody, signInEnabled: false }, 'POST', '/workitems'), { kind: 'pass', actAs: 'as-sent' });
   });

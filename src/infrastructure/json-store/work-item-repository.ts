@@ -45,6 +45,10 @@ export class JsonWorkItemRepository implements WorkItemRepository {
     return this.#where((w) => w.assignedTo === memberId);
   }
 
+  async findWithPullRequestHead(sha: string): Promise<WorkItemAggregate[]> {
+    return this.#where((w) => w.devLinks.some((l) => l.kind === 'pullRequest' && l.headSha === sha));
+  }
+
   #where(match: (row: WorkItem) => boolean): WorkItemAggregate[] {
     return this.#tx.current().db.workItems.filter(match).map((w) => WorkItemAggregate.reconstitute(w));
   }

@@ -15,6 +15,7 @@ import type { DeleteWorkItemsInput } from '#application/work-items/delete-work-i
 import type { EditCommentInput } from '#application/work-items/edit-comment.ts';
 import type { MoveWorkItemInput } from '#application/work-items/move-work-item.ts';
 import type { PurgeWorkItemInput } from '#application/work-items/purge-work-item.ts';
+import type { RemoveDevLinkInput } from '#application/work-items/remove-dev-link.ts';
 import type { RemoveHyperlinkInput } from '#application/work-items/remove-hyperlink.ts';
 import type { RemoveLinkInput } from '#application/work-items/remove-link.ts';
 import type { RestoreWorkItemInput } from '#application/work-items/restore-work-item.ts';
@@ -76,6 +77,7 @@ const fakes: WorkItemRouteDeps = {
   deleteComment: succeeds<DeleteCommentInput, void>('deleteComment', undefined),
   addHyperlink: succeeds<AddHyperlinkInput, Hyperlink>('addHyperlink', hyperlink),
   removeHyperlink: succeeds<RemoveHyperlinkInput, void>('removeHyperlink', undefined),
+  removeDevLink: succeeds<RemoveDevLinkInput, void>('removeDevLink', undefined),
 };
 
 let routes = workItemRoutes(fakes);
@@ -133,6 +135,7 @@ describe('work item routes', () => {
       ['DELETE', '/workitems/4/comments/c1', undefined, 'deleteComment', 200],
       ['POST', '/workitems/4/hyperlinks', { url: 'https://x.dev' }, 'addHyperlink', 201],
       ['DELETE', '/workitems/4/hyperlinks/h1', undefined, 'removeHyperlink', 200],
+      ['DELETE', '/workitems/4/devlinks/branch%3Aacme%2Fboards%3Awi%2F4', undefined, 'removeDevLink', 200],
       ['POST', '/links', { sourceId: 1, targetId: 2, type: 'Related' }, 'addLink', 201],
       ['DELETE', '/links/l1', undefined, 'removeLink', 200],
       ['POST', '/recycle-bin/4/restore', undefined, 'restoreWorkItem', 200],
@@ -147,10 +150,14 @@ describe('work item routes', () => {
     calls = [];
     await call('PATCH', '/workitems/4/comments/c1', { text: 'Hi' });
     assert.deepEqual(calls[0]?.input, { caller, workItemId: 4, commentId: 'c1', text: 'Hi' });
+    // Dev link ids hold slashes and colons, so they arrive encoded as one path segment.
+    calls = [];
+    await call('DELETE', '/workitems/4/devlinks/branch%3Aacme%2Fboards%3Awi%2F4');
+    assert.deepEqual(calls[0]?.input, { caller, workItemId: 4, linkId: 'branch:acme/boards:wi/4' });
   });
 
   it('leaves requests it does not own to the next handler', async () => {
-    assert.deepEqual(await call('DELETE', '/workitems/4/devlinks/x'), { status: 404, body: 'not mine' });
+    assert.deepEqual(await call('DELETE', '/workitems/4/devlinks'), { status: 404, body: 'not mine' });
     assert.deepEqual(await call('GET', '/workitems'), { status: 404, body: 'not mine' });
   });
 

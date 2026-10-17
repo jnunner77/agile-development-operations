@@ -5,11 +5,10 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, createAuth } from '../../src/compose.ts';
-import { GitHubIntegration } from '../../server/github.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
-import { branchIds, branchNameFor, mentionedIds } from '#domain/devlinks.ts';
+import { branchIds, branchNameFor, mentionedIds } from '#domain/dev-links/references.ts';
 import type { WorkItem } from '#domain/types.ts';
 
 let dir: string;
@@ -33,11 +32,11 @@ afterEach(() => {
 });
 
 let delivery = 0;
-function deliver(event: string, payload: unknown, opts: { secret?: string; id?: string; target?: typeof app } = {}) {
+function deliver(event: string, payload: unknown, opts: { secret?: string; id?: string; target?: typeof app; requestPath?: string } = {}) {
   const body = JSON.stringify(payload);
   const sig = 'sha256=' + crypto.createHmac('sha256', opts.secret ?? secret).update(body).digest('hex');
   return request(opts.target ?? app)
-    .post('/api/integrations/github/webhook')
+    .post(opts.requestPath ?? '/api/integrations/github/webhook')
     .set('Content-Type', 'application/json')
     .set('X-GitHub-Event', event)
     .set('X-GitHub-Delivery', opts.id ?? `d-${++delivery}`)
@@ -128,7 +127,7 @@ describe('webhook security', () => {
     await create('Task');
     const payload = { ref: 'wi/1', ref_type: 'branch', repository: REPO, sender: SENDER };
     // The first attempt fails while being processed; GitHub then redelivers it with the same id.
-    vi.spyOn(store, 'transact').mockImplementationOnce(() => {
+    vi.spyOn(store, 'save').mockImplementationOnce(() => {
       throw new Error('temporary failure');
     });
     expect((await deliver('create', payload, { id: 'retry' })).status).toBe(500);
@@ -151,16 +150,19 @@ describe('webhook security', () => {
     expect(item(1).devLinks).toHaveLength(1);
   });
 
-  it('works while sign-in is on, without a session', async () => {
+  it('accepts trailing-slash webhook requests without a session when sign-in is on', async () => {
     const auth = createAuth(store);
-    const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false, github: new GitHubIntegration(store) });
+    const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
     await request(signedIn).patch(`/api/auth/accounts/${member.id}`).send({ isAdmin: true });
     await request(signedIn).post(`/api/auth/accounts/${member.id}/password`).send({ password: 'correct horse', mustChange: false });
     expect((await request(signedIn).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
     await create('Task');
     expect((await request(signedIn).get('/api/integrations/github')).status).toBe(401);
-    const res = await deliver('create', { ref: 'wi/1-x', ref_type: 'branch', repository: REPO, sender: SENDER }, { target: signedIn });
+    const res = await deliver('create', { ref: 'wi/1-x', ref_type: 'branch', repository: REPO, sender: SENDER }, {
+      target: signedIn,
+      requestPath: '/api/integrations/github/webhook/',
+    });
     expect(res.status).toBe(200);
     expect(item(1).devLinks).toHaveLength(1);
   });

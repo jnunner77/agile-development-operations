@@ -41,6 +41,12 @@ export class MemoryWorkItemRepository implements WorkItemRepository, Checkpointa
     return this.#rows.filter((w) => w.assignedTo === memberId).map((w) => WorkItemAggregate.reconstitute(structuredClone(w)));
   }
 
+  async findWithPullRequestHead(sha: string): Promise<WorkItemAggregate[]> {
+    return this.#rows
+      .filter((w) => w.devLinks.some((l) => l.kind === 'pullRequest' && l.headSha === sha))
+      .map((w) => WorkItemAggregate.reconstitute(structuredClone(w)));
+  }
+
   async ranks(): Promise<RankEntry[]> {
     return this.#rows.map((w) => ({ id: w.id as WorkItemId, stackRank: w.stackRank }));
   }

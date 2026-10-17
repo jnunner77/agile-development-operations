@@ -1,21 +1,12 @@
 /** Types shared by the GitHub integration's server code and its settings page. */
 
-export interface GitHubSettings {
-  enabled: boolean;
-  /** Move PBIs, bugs and tasks to their "in progress" state when a pull request opens. */
-  moveOnPullRequestOpened: boolean;
-  /** Move PBIs, bugs and tasks to Done when a pull request merges into the default branch. */
-  completeOnMerge: boolean;
-  /** Only accept events from these repositories (owner/name); empty = any. */
-  repositories: string[];
-}
+import type { GitHubSettings } from '#domain/integrations/github.ts';
 
-export const DEFAULT_GITHUB_SETTINGS: GitHubSettings = {
-  enabled: true,
-  moveOnPullRequestOpened: true,
-  completeOnMerge: true,
-  repositories: [],
-};
+export { DEFAULT_GITHUB_SETTINGS } from '#domain/integrations/github.ts';
+export type { GitHubSettings } from '#domain/integrations/github.ts';
+
+/** Where GitHub sends webhook deliveries. */
+export const WEBHOOK_PATH = '/api/integrations/github/webhook';
 
 export interface Delivery {
   id: string;

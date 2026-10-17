@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '#shared/result.ts';
 import { WORK_ITEM_TYPES, defaultState, isClosed, stateDef, type WorkItemType } from '../process.ts';
-import type { Comment, FieldChange, Hyperlink, WorkItem } from '../types.ts';
+import { MAX_DEV_LINKS_PER_ITEM, describeDevLink, devLinkId, linkToEvict, type CheckResult, type DevLinkDraft } from '../dev-links/dev-link.ts';
+import type { Comment, DevLink, FieldChange, Hyperlink, WorkItem } from '../types.ts';
 import { mayChangeComment, type CommentActor, type CommentText } from './comments.ts';
 import type { WorkItemError } from './errors.ts';
 import type { WorkItemEvent } from './events.ts';
@@ -94,8 +95,9 @@ export function cloneWorkItem(w: WorkItem): WorkItem {
 }
 
 /**
- * A work item and everything it owns: its fields, history, comments and hyperlinks. Rules that
- * span several items (hierarchy, ranking, links) live in the domain services next to it.
+ * A work item and everything it owns: its fields, history, comments, hyperlinks and development
+ * links (branches, commits and pull requests). Rules that span several items (hierarchy, ranking,
+ * links) live in the domain services next to it.
  */
 export class WorkItemAggregate {
   readonly #props: WorkItem;
@@ -303,6 +305,58 @@ export class WorkItemAggregate {
     this.addNote(`Removed hyperlink ${link.url}`, context);
     this.#events.push({ type: 'HyperlinkRemoved', workItemId: this.#props.id, hyperlinkId, occurredAt: context.now });
     return ok(undefined);
+  }
+
+  /**
+   * Link a branch, commit or pull request, or update the link to it if there is one. New links
+   * and pull requests changing state are noted in the history.
+   */
+  linkDevelopment(draft: DevLinkDraft, context: ChangeContext): void {
+    const p = this.#props;
+    const at = context.now.toISOString();
+    const id = devLinkId(draft);
+    const existing = p.devLinks.find((l) => l.id === id);
+    if (existing) {
+      const before = existing.state;
+      Object.assign(existing, { ...draft, createdAt: existing.createdAt, checks: existing.checks ?? null, updatedAt: at });
+      if (draft.kind === 'pullRequest' && draft.state && draft.state !== before) {
+        this.#noteActivity(`Pull request #${draft.ref} ${draft.state === 'open' ? 'reopened' : draft.state} (${draft.repo})`, context);
+      }
+      this.#events.push({ type: 'DevLinkUpdated', workItemId: p.id, devLinkId: id, occurredAt: context.now });
+      return;
+    }
+    if (p.devLinks.length >= MAX_DEV_LINKS_PER_ITEM) p.devLinks.splice(linkToEvict(p.devLinks), 1);
+    const link: DevLink = { ...draft, id, checks: null, updatedAt: at };
+    p.devLinks.push(link);
+    this.#noteActivity(`Linked ${describeDevLink(link)} in ${link.repo}`, context);
+    this.#events.push({ type: 'DevLinkAdded', workItemId: p.id, devLinkId: id, occurredAt: context.now });
+  }
+
+  /** Record the checks result on the pull request built from `headSha`. Returns whether it changed. */
+  recordChecks(headSha: string, checks: CheckResult, now: Date): boolean {
+    const link = this.#props.devLinks.find((l) => l.kind === 'pullRequest' && l.headSha === headSha);
+    if (!link || link.checks === checks) return false;
+    link.checks = checks;
+    link.updatedAt = now.toISOString();
+    this.#events.push({ type: 'DevLinkUpdated', workItemId: this.#props.id, devLinkId: link.id, occurredAt: now });
+    return true;
+  }
+
+  removeDevLink(linkId: string, context: ChangeContext): Result<void, WorkItemError> {
+    const p = this.#props;
+    const link = p.devLinks.find((l) => l.id === linkId);
+    if (!link) return err({ code: 'DEV_LINK_NOT_FOUND', id: linkId });
+    p.devLinks = p.devLinks.filter((l) => l.id !== linkId);
+    this.#noteActivity(`Removed link to ${describeDevLink(link)}`, context);
+    this.#events.push({ type: 'DevLinkRemoved', workItemId: p.id, devLinkId: linkId, occurredAt: context.now });
+    return ok(undefined);
+  }
+
+  /** A history note for source control activity, which also counts as a change to the item. */
+  #noteActivity(note: string, context: ChangeContext): void {
+    this.addNote(note, context);
+    this.#props.changedAt = context.now.toISOString();
+    this.#props.changedBy = context.actor;
   }
 
   /**

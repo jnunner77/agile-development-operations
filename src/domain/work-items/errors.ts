@@ -12,6 +12,7 @@ export type WorkItemError =
   | HyperlinkError
   | { readonly code: 'UNKNOWN_WORK_ITEM_TYPE'; readonly type: string }
   | { readonly code: 'WORK_ITEM_NOT_FOUND'; readonly id: number }
+  | { readonly code: 'DEV_LINK_NOT_FOUND'; readonly id: string }
   | { readonly code: 'INVALID_STATE'; readonly state: string; readonly type: WorkItemType }
   | { readonly code: 'SPRINT_NOT_FOUND'; readonly id: string }
   | { readonly code: 'MEMBER_NOT_FOUND'; readonly id: string }
