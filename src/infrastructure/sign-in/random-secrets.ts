@@ -15,10 +15,6 @@ export class RandomSecrets implements Secrets {
     return API_TOKEN_PREFIX + crypto.randomBytes(32).toString('base64url');
   }
 
-  newWebhookSecret(): string {
-    return crypto.randomBytes(32).toString('hex');
-  }
-
   digest(secret: string): string {
     return crypto.createHash('sha256').update(secret).digest('hex');
   }

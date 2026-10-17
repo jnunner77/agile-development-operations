@@ -76,14 +76,13 @@ export function setup() {
       newSessionToken: () => `session-${++secret}`,
       newApiToken: () => `boards_secret${++secret}`,
       digest: (s) => `digest:${s}`,
-      newWebhookSecret: () => `webhook-${++secret}`,
     },
     signInWrites: new SerialQueue(),
     signInForcedOff: false,
     github,
     deliveries: new MemoryDeliveryLog(),
     // Stand-ins: a delivery is "signed" with `signed:<secret>`, and its body names a sent event.
-    webhookSignatures: { matches: (secret, _body, signature) => signature === `signed:${secret}` },
+    webhookSignatures: { newSecret: () => `webhook-${++secret}`, matches: (secret, _body, signature) => signature === `signed:${secret}` },
     githubPayloads: {
       read: (_event, body) => {
         const sent = payloads.get(new TextDecoder().decode(body));

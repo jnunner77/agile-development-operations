@@ -12,7 +12,6 @@ export type IntegrationDeps = Pick<
   | 'webhookSignatures'
   | 'githubPayloads'
   | 'integrationWrites'
-  | 'secrets'
   | 'items'
   | 'sprints'
   | 'members'

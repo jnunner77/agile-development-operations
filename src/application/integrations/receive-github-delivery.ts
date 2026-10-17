@@ -73,10 +73,28 @@ export class ReceiveGitHubDelivery {
     const id = input.deliveryId ?? deps.ids.next();
     if (deps.deliveries.wasHandled(id)) return nothing('Duplicate delivery ignored');
     const read = deps.githubPayloads.read(input.event, input.body);
-    if (!read.ok) return read;
+    let repository: string;
+    if (read.ok) repository = read.value.repository;
+    else if (read.error.code === 'PAYLOAD_INVALID') repository = read.error.repository;
+    else return read;
 
     const record = (succeeded: boolean, result: string, linked: number[]) =>
-      deps.deliveries.record({ id, event: input.event, repo: read.value.repository, receivedAt: deps.clock.now().toISOString(), ok: succeeded, result, linked });
+      deps.deliveries.record({ id, event: input.event, repo: repository, receivedAt: deps.clock.now().toISOString(), ok: succeeded, result, linked });
+    const handled = (outcome: DeliveryOutcome): Result<DeliveryOutcome, never> => {
+      record(true, outcome.result, outcome.linked);
+      // Only once it has been handled, so a redelivery of one that failed is tried again.
+      deps.deliveries.markHandled(id);
+      return ok(outcome);
+    };
+
+    if (!integration.acceptsRepository(repository)) {
+      return handled({ result: `Ignored: ${repository || 'unknown repository'} is not in the allowed list`, linked: [] });
+    }
+    if (!read.ok) {
+      const reason = read.error.code === 'PAYLOAD_INVALID' ? read.error.reason : 'not JSON';
+      record(false, `Failed: unexpected payload (${reason})`, []);
+      return read;
+    }
     let outcome: Outcome;
     try {
       outcome = await this.#handle(integration, read.value);
@@ -85,19 +103,13 @@ export class ReceiveGitHubDelivery {
       throw error;
     }
     if (!outcome.ok) {
-      record(false, `Failed: ${outcome.error.code}`, []);
+      record(false, `Failed: ${JSON.stringify(outcome.error)}`, []);
       return outcome;
     }
-    record(true, outcome.value.result, outcome.value.linked);
-    // Only once it has been handled, so a redelivery of one that failed is tried again.
-    deps.deliveries.markHandled(id);
-    return outcome;
+    return handled(outcome.value);
   }
 
   async #handle(integration: GitHubIntegration, event: DevelopmentEvent): Promise<Outcome> {
-    if (!integration.acceptsRepository(event.repository)) {
-      return nothing(`Ignored: ${event.repository || 'unknown repository'} is not in the allowed list`);
-    }
     const { activity } = event;
     switch (activity.kind) {
       case 'ping':
@@ -176,7 +188,7 @@ export class ReceiveGitHubDelivery {
     if (!headSha) return nothing('Ignored check suite without a commit');
     const checks = checkResult(suite.status, suite.conclusion);
     const linked: number[] = [];
-    for (const item of await this.#deps.items.findAll()) {
+    for (const item of await this.#deps.items.findWithPullRequestHead(headSha)) {
       if (!item.recordChecks(headSha, checks, session.now)) continue;
       await save(this.#deps, session, item);
       linked.push(item.id);

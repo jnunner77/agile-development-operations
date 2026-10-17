@@ -1,5 +1,5 @@
 import type { GitHubPayloads, PayloadError } from '#application/integrations/ports.ts';
-import type { DevelopmentActivity, DevelopmentEvent, PullRequest, PushedCommit, SourceRepository } from '#domain/dev-links/activity.ts';
+import { MAX_COMMITS_PER_PUSH, type DevelopmentActivity, type DevelopmentEvent, type PullRequest, type PushedCommit, type SourceRepository } from '#domain/dev-links/activity.ts';
 import { err, ok, type Result } from '#shared/result.ts';
 
 // Translates GitHub's webhook payloads into the development activity the domain understands.
@@ -39,7 +39,8 @@ function commits(payload: Json): PushedCommit[] {
   const list = payload['commits'];
   if (list === undefined || list === null) return [];
   if (!Array.isArray(list)) throw new Unexpected('commits: Expected a list');
-  return list.map((value: unknown, i): PushedCommit => {
+  // Only the commits that get linked are read.
+  return list.slice(0, MAX_COMMITS_PER_PUSH).map((value: unknown, i): PushedCommit => {
     const where = `commits.${i}.`;
     if (!isRecord(value)) throw new Unexpected(`commits.${i}: Expected an object`);
     const author = isRecord(value['author']) ? value['author'] : {};
@@ -114,13 +115,13 @@ export class GitHubPayloadReader implements GitHubPayloads {
     } catch {
       return err({ code: 'PAYLOAD_NOT_JSON' });
     }
-    if (!isRecord(payload)) return err({ code: 'PAYLOAD_INVALID', event, reason: 'Expected a JSON object' });
+    if (!isRecord(payload)) return err({ code: 'PAYLOAD_INVALID', event, reason: 'Expected a JSON object', repository: '' });
     const repo = isRecord(payload['repository']) ? textOrNull(payload['repository']['full_name']) : null;
     const sender = isRecord(payload['sender']) ? textOrNull(payload['sender']['login']) : null;
     try {
       return ok({ repository: repo ?? '', sender, activity: activity(event, payload) });
     } catch (error) {
-      if (error instanceof Unexpected) return err({ code: 'PAYLOAD_INVALID', event, reason: error.message });
+      if (error instanceof Unexpected) return err({ code: 'PAYLOAD_INVALID', event, reason: error.message, repository: repo ?? '' });
       throw error;
     }
   }

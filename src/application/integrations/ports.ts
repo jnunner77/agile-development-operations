@@ -2,14 +2,17 @@ import type { DevelopmentEvent } from '#domain/dev-links/activity.ts';
 import type { Result } from '#shared/result.ts';
 import type { Delivery } from '../contracts/integrations.ts';
 
-/** Checks GitHub's X-Hub-Signature-256 header: an HMAC-SHA256 of the exact body bytes. */
+/** Webhook secrets, and GitHub's X-Hub-Signature-256 header: an HMAC-SHA256 of the exact body bytes. */
 export interface WebhookSignatures {
+  /** A new, unguessable secret to share with GitHub. */
+  newSecret(): string;
   matches(secret: string, body: Uint8Array, signature: string): boolean;
 }
 
 export type PayloadError =
   | { readonly code: 'PAYLOAD_NOT_JSON' }
-  | { readonly code: 'PAYLOAD_INVALID'; readonly event: string; readonly reason: string };
+  /** The body is JSON, but not a payload this event can be read from. `repository` is '' if unknown. */
+  | { readonly code: 'PAYLOAD_INVALID'; readonly event: string; readonly reason: string; readonly repository: string };
 
 /** Reads a GitHub delivery's body into the development activity it describes. */
 export interface GitHubPayloads {

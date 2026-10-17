@@ -21,7 +21,7 @@ export class RotateWebhookSecret {
     const access = requireAdmin(input.caller);
     if (!access.ok) return access;
     const deps = this.#deps;
-    const secret = deps.secrets.newWebhookSecret();
+    const secret = deps.webhookSignatures.newSecret();
     const events = await deps.integrationWrites.run(async () => {
       const integration = await deps.github.get();
       integration.rotateSecret(secret, deps.clock.now());

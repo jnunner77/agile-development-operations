@@ -187,6 +187,30 @@ describe('receiving GitHub deliveries', () => {
     assert.deepEqual(view.deliveries.slice(1).map((d) => [d.id, d.event, d.repo]), [['retry', 'branch', 'acme/boards'], ['retry', 'branch', 'acme/boards']]);
   });
 
+  it('records payloads it cannot read, unless their repository is not allowed anyway', async () => {
+    const c = await connected();
+    const receive = new ReceiveGitHubDelivery({
+      ...c.deps,
+      githubPayloads: {
+        read: (event) => ({ ok: false, error: { code: 'PAYLOAD_INVALID', event, reason: 'repository.html_url: Expected text', repository: 'acme/boards' } }),
+      },
+    });
+    const input = { event: 'push', signature: `signed:${c.secret}`, body: new TextEncoder().encode('broken') };
+    const failed = await receive.execute({ ...input, deliveryId: 'bad' });
+    assert.deepEqual(failed, { ok: false, error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'repository.html_url: Expected text', repository: 'acme/boards' } });
+    unwrap(await new UpdateGitHubSettings(c.deps).execute({ caller: admin, repositories: ['acme/other'] }));
+    const ignored = unwrap(await receive.execute({ ...input, deliveryId: 'elsewhere' }));
+    assert.equal(ignored.result, 'Ignored: acme/boards is not in the allowed list');
+    const view = unwrap(await new GetGitHubAdminView(c.deps).execute({ caller: admin }));
+    assert.deepEqual(
+      view.deliveries.map((d) => [d.id, d.ok, d.repo, d.result]),
+      [
+        ['elsewhere', true, 'acme/boards', 'Ignored: acme/boards is not in the allowed list'],
+        ['bad', false, 'acme/boards', 'Failed: unexpected payload (repository.html_url: Expected text)'],
+      ],
+    );
+  });
+
   it('records ignored events', async () => {
     const c = await connected();
     assert.equal(unwrap(await c.deliver({ kind: 'other', event: 'issues' }, { event: 'issues' })).result, 'Ignored event "issues"');

@@ -146,17 +146,24 @@ describe('GitHub payloads', () => {
     assert.deepEqual(other.value.activity, { kind: 'other', event: 'issues' });
   });
 
-  it('says what is wrong with a payload it cannot use', () => {
+  it('reads only the commits that get linked', () => {
+    const good = Array.from({ length: 50 }, (_, i) => ({ id: `c${i}`, message: 'm', url: 'u' }));
+    const result = read('push', { ref: 'refs/heads/x', repository, commits: [...good, { broken: true }] });
+    assert.ok(result.ok);
+    assert.equal(result.value.activity.kind === 'push' ? result.value.activity.commits.length : 0, 50);
+  });
+
+  it('says what is wrong with a payload it cannot use, and where it came from', () => {
     assert.deepEqual(reader.read('push', bytes('not json')), { ok: false, error: { code: 'PAYLOAD_NOT_JSON' } });
-    assert.deepEqual(read('push', [1]), { ok: false, error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'Expected a JSON object' } });
-    assert.deepEqual(read('push', { ref: 'refs/heads/x' }), { ok: false, error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'repository: Expected an object' } });
+    assert.deepEqual(read('push', [1]), { ok: false, error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'Expected a JSON object', repository: '' } });
+    assert.deepEqual(read('push', { ref: 'refs/heads/x' }), { ok: false, error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'repository: Expected an object', repository: '' } });
     assert.deepEqual(read('push', { repository, commits: [{ id: 'a' }] }), {
       ok: false,
-      error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'commits.0.message: Expected text' },
+      error: { code: 'PAYLOAD_INVALID', event: 'push', reason: 'commits.0.message: Expected text', repository: 'acme/boards' },
     });
     assert.deepEqual(read('pull_request', { action: 'opened', repository, pull_request: { number: 1, title: 'T', html_url: 'h', head: { ref: 'x' }, base: { ref: 'main' } } }), {
       ok: false,
-      error: { code: 'PAYLOAD_INVALID', event: 'pull_request', reason: 'pull_request.head.sha: Expected text' },
+      error: { code: 'PAYLOAD_INVALID', event: 'pull_request', reason: 'pull_request.head.sha: Expected text', repository: 'acme/boards' },
     });
   });
 });

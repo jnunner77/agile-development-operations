@@ -17,6 +17,8 @@ const view: GitHubAdminView = { settings: { ...DEFAULT_GITHUB_SETTINGS, reposito
 let open = true;
 let outcome: Result<DeliveryOutcome, WebhookError | WorkItemError> = ok({ result: 'Ping received', linked: [] });
 let calls: { name: string; input: unknown }[] = [];
+/** Whether each request's body had been read by the time its route finished. */
+let bodiesRead: boolean[] = [];
 
 const fakes: IntegrationRouteDeps = {
   identify: () => caller,
@@ -54,6 +56,7 @@ let base: string;
 before(async () => {
   server = http.createServer((req, res) => {
     void routes.handle(req, res).then((handled) => {
+      bodiesRead.push(req.readableEnded);
       if (!handled) res.writeHead(404).end('not mine');
     });
   });
@@ -69,6 +72,7 @@ after(() => {
 
 beforeEach(() => {
   calls = [];
+  bodiesRead = [];
   open = true;
   outcome = ok({ result: 'Ping received', linked: [] });
   caller = { ...caller, admin: 'granted' };
@@ -103,17 +107,38 @@ describe('the webhook', () => {
     open = false;
     assert.deepEqual(await webhook(signed), { status: 404, body: { error: 'Webhook not found' } });
     assert.deepEqual(calls, []);
+    assert.deepEqual(bodiesRead, [false, false, false, false]);
+    // A delivery that passes the checks is read.
+    open = true;
+    await webhook(signed);
+    assert.equal(bodiesRead.at(-1), true);
   });
 
-  it('refuses bodies over the limit', async () => {
+  it('refuses bodies over the limit, declared or not', async () => {
     assert.deepEqual(await webhook(signed, 'x'.repeat(WEBHOOK_LIMIT_BYTES + 1)), { status: 413, body: { error: 'Request is too large' } });
+    // Sent in chunks without a Content-Length, it is cut off once it passes the limit.
+    const chunked = await new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
+      const req = http.request(`${base}/integrations/github/webhook`, { method: 'POST', headers: signed }, (res) => {
+        let body = '';
+        res.on('data', (d: Buffer) => (body += d.toString()));
+        res.on('end', () => resolve({ status: res.statusCode, body }));
+      });
+      req.on('error', reject);
+      const chunk = 'x'.repeat(1024 * 1024);
+      const write = (left: number): void => {
+        if (left === 0 || req.destroyed) return void req.end();
+        req.write(chunk, () => write(left - 1));
+      };
+      write(11);
+    });
+    assert.deepEqual(chunked, { status: 413, body: '{"error":"Request is too large"}' });
     assert.deepEqual(calls, []);
   });
 
   it('answers with the use case error', async () => {
     outcome = err({ code: 'INVALID_SIGNATURE' });
     assert.deepEqual(await webhook(signed), { status: 401, body: { error: 'Invalid signature' } });
-    outcome = err({ code: 'PAYLOAD_INVALID', event: 'push', reason: 'repository: Expected an object' });
+    outcome = err({ code: 'PAYLOAD_INVALID', event: 'push', reason: 'repository: Expected an object', repository: '' });
     assert.deepEqual(await webhook(signed), { status: 400, body: { error: 'Unexpected "push" payload: repository: Expected an object' } });
   });
 });

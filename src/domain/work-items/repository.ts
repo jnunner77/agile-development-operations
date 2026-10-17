@@ -17,6 +17,8 @@ export interface WorkItemRepository {
   /** Items planned in a sprint, open or closed. */
   findInSprint(sprintId: SprintId): Promise<WorkItemAggregate[]>;
   findAssignedTo(memberId: MemberId): Promise<WorkItemAggregate[]>;
+  /** Items linked to a pull request whose head is this commit. */
+  findWithPullRequestHead(sha: string): Promise<WorkItemAggregate[]>;
   /** Every item's place in the backlog order, without loading the items. */
   ranks(): Promise<RankEntry[]>;
   save(item: WorkItemAggregate): Promise<void>;
