@@ -96,6 +96,20 @@ describe('store unit of work', () => {
     });
   });
 
+  it('updates work items by transaction-scoped id index', async () => {
+    await uow.run(meta, async () => {
+      const first = await newItem('First');
+      const second = await newItem('Second');
+      await items.save(first);
+      await items.save(second);
+      await items.save(first);
+      await items.delete(first.id);
+      await items.save(second);
+      return ok(undefined);
+    });
+    assert.deepEqual(store.db.workItems.map((w) => w.title), ['Second']);
+  });
+
   it('discards everything, including used ids, when the work returns an error', async () => {
     const before = store.db;
     const result = await uow.run(meta, async () => {

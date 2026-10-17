@@ -61,7 +61,8 @@ export function pathId(res: ServerResponse, raw: string | undefined): Result<num
 
 /** A query parameter given exactly once and not empty, else null. */
 export function queryParam(req: IncomingMessage, name: string): string | null {
-  const values = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').getAll(name);
+  const url = req.url ?? '';
+  const queryStart = url.indexOf('?');
+  const values = new URLSearchParams(queryStart < 0 ? '' : url.slice(queryStart + 1)).getAll(name);
   return values.length === 1 && values[0] ? values[0] : null;
 }
-

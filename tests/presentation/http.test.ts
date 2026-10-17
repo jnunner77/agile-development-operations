@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 import { readJsonBody } from '#presentation/http/body.ts';
+import { queryParam } from '#presentation/http/handlers.ts';
 import { sendJson } from '#presentation/http/respond.ts';
 import { Router } from '#presentation/http/router.ts';
 
@@ -71,5 +72,12 @@ describe('reading JSON bodies', () => {
     assert.deepEqual(await post('{oops'), { ok: false, error: { code: 'MALFORMED_JSON' } });
     assert.deepEqual(await post('"text"'), { ok: false, error: { code: 'MALFORMED_JSON' } });
     assert.deepEqual(await post(JSON.stringify({ a: 'x'.repeat(100) })), { ok: false, error: { code: 'BODY_TOO_LARGE' } });
+  });
+});
+
+describe('reading query parameters', () => {
+  it('preserves additional question marks in a query value', () => {
+    const req = { url: '/sprints/s1?moveTo=s2?extra' } as IncomingMessage;
+    assert.equal(queryParam(req, 'moveTo'), 's2?extra');
   });
 });

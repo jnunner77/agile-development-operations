@@ -5,10 +5,12 @@ import type { RankEntry, WorkItemRepository } from '#domain/work-items/repositor
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
 import type { WorkItem } from '#domain/types.ts';
 import type { CurrentTransaction } from './unit-of-work.ts';
+import type { Tx } from './store.ts';
 
 /** Work items in the JSON store, read from and written to the running unit of work. */
 export class JsonWorkItemRepository implements WorkItemRepository {
   readonly #tx: CurrentTransaction;
+  readonly #indices = new WeakMap<Tx, Map<number, number>>();
 
   constructor(tx: CurrentTransaction) {
     this.#tx = tx;
@@ -54,15 +56,36 @@ export class JsonWorkItemRepository implements WorkItemRepository {
   async save(item: WorkItemAggregate): Promise<void> {
     const tx = this.#tx.current();
     const row = item.toSnapshot();
-    const idx = tx.db.workItems.findIndex((w) => w.id === row.id);
-    if (idx >= 0) tx.db.workItems[idx] = row;
-    else tx.db.workItems.push(row);
+    const index = this.#indexFor(tx);
+    const idx = index.get(row.id);
+    if (idx !== undefined) tx.db.workItems[idx] = row;
+    else {
+      index.set(row.id, tx.db.workItems.length);
+      tx.db.workItems.push(row);
+    }
     tx.touchItem(row.id);
   }
 
   async delete(id: WorkItemId): Promise<void> {
     const tx = this.#tx.current();
-    tx.db.workItems = tx.db.workItems.filter((w) => w.id !== id);
+    const index = this.#indexFor(tx);
+    const idx = index.get(id);
+    if (idx !== undefined) {
+      tx.db.workItems.splice(idx, 1);
+      index.delete(id);
+      for (let i = idx; i < tx.db.workItems.length; i += 1) {
+        index.set(tx.db.workItems[i]!.id, i);
+      }
+    }
     tx.deletedItems.add(id);
+  }
+
+  #indexFor(tx: Tx): Map<number, number> {
+    let index = this.#indices.get(tx);
+    if (!index) {
+      index = new Map(tx.db.workItems.map((row, position) => [row.id, position]));
+      this.#indices.set(tx, index);
+    }
+    return index;
   }
 }
