@@ -179,23 +179,26 @@ otherwise passwords travel over the network unencrypted.
 
 The server is moving to an *onion* architecture: business rules sit in the centre, everything
 else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
-outward. Work items, links and the recycle bin have moved; the other features follow.
+outward. Work items, links, the recycle bin, sprints, capacity, team members and project settings
+have moved; sign-in, API tokens, GitHub and snapshots follow.
 
 ```
 src/
   shared/          Result and Brand helpers. Plain TypeScript.
   domain/          Business rules, with no Node or browser APIs: the process template (types,
-                   states), dates, capacity and burndown, and the work item, link and recycle-bin
-                   aggregates with their rules, errors, events and repository interfaces.
-  application/     One class per use case (create, move, bulk edit, copy, delete, restore...), the
-                   ports they need (clock, ids, events, unit of work) and the API's data contracts.
+                   states), dates, capacity and burndown, and the aggregates (work items, links,
+                   recycle bin, sprints, capacity plans, team members, project settings) with
+                   their rules, errors, events and repository interfaces.
+  application/     One class per use case (create, move, bulk edit, copy, restore; sprints,
+                   capacity, members, settings), who may administer the project, the ports they
+                   need (clock, ids, events, unit of work) and the API's data contracts.
   infrastructure/  Adapters for those ports: the JSON document store (atomic writes to
                    data/db.json), repositories over it, in-memory versions for tests.
   presentation/    node:http routes: parse requests by hand, call a use case, map its errors to
                    HTTP statuses.
   main.ts          Starts the server. compose.ts wires the concrete classes together.
-server/   Express code for what hasn't moved yet: sprints, team, settings, sign-in, API tokens,
-          GitHub, snapshots and backups. It runs security and sign-in for every request.
+server/   Express code for what hasn't moved yet: sign-in, API tokens, GitHub, snapshots and
+          backups. It runs security and sign-in for every request.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
 tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
           whole app over HTTP.
