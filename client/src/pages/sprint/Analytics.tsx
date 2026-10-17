@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import { formatDayMonth } from '../../../../shared/dates';
-import { computeBurndown, computeVelocity, type BurndownPoint } from '../../../../shared/burndown';
-import { computeCapacity, computeSprintWork, sortSprints, sprintTimeframe } from '../../../../shared/sprints';
-import type { Sprint } from '../../../../shared/types';
+import { formatDayMonth } from '#domain/dates.ts';
+import { computeBurndown, computeVelocity, type BurndownPoint } from '#domain/burndown.ts';
+import { computeCapacity, computeSprintWork, sortSprints, sprintTimeframe } from '#domain/sprints.ts';
+import type { Sprint } from '#domain/types.ts';
 import { EmptyState } from '../../components/common';
 import { formatHours, formatNumber } from '../../lib/format';
 import { useToday } from '../../lib/hooks';

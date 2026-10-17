@@ -1,8 +1,10 @@
 # Working in this repository
 
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
-client (`client/`), an Express API with a JSON file store (`server/`), and domain code
-shared by both (`shared/`). See `README.md` for features and `deploy/README.md` for hosting.
+client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
+architecture in `src/` (shared, domain, application, infrastructure, presentation); the features
+not yet moved there still run on the Express code in `server/`. See `README.md` for features and
+the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
 
@@ -43,10 +45,28 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
 
 ## Code conventions
 
-- TypeScript everywhere; keep `shared/` free of Node- and browser-specific code.
-- Server mutations go through `store.transact(...)` so they are validated, persisted,
-  recorded in work item history and broadcast to browsers as deltas. Validate request
-  bodies with zod.
+- TypeScript everywhere. The server runs on plain Node 22.18+ (type stripping), so use `.ts`
+  extensions in imports and only erasable syntax: no `enum`, `namespace` or constructor
+  parameter properties.
+- Server code follows the `onion-architecture-ts` skill. Each layer in `src/` is its own
+  TypeScript project and may only import the layers inside it (`#shared/…`, `#domain/…`,
+  `#application/…`); `tsc -b` fails otherwise. Fix such errors by adding a port, never by
+  widening a tsconfig's `references` or `include`.
+  - `domain/`: business rules in aggregates and value objects, no Node or browser APIs. Expected
+    failures are returned as `Result` errors with a `code`, never thrown. Time and ids are passed in.
+  - `application/`: one use case class per file with an `execute` method; ports for anything
+    external. Use cases orchestrate; rules belong in the domain.
+  - `infrastructure/`: adapters that implement the ports. `presentation/`: `node:http` routes with
+    hand-written parsers, and an exhaustive switch (ending in `assertNever`) from error codes to
+    HTTP statuses.
+  - `src/compose.ts` is the only place that knows the concrete classes.
+- No new runtime dependencies in `src/`. Express and zod remain only in `server/` until the
+  features there move into the layers. Move one feature at a time, as the work items slice did.
+- Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`, or
+  `store.transact` in `server/`), so it is validated, persisted, recorded in work item history
+  and broadcast to browsers as deltas, or not applied at all.
 - Secrets (passwords, webhook secrets) live in their own files in the data directory,
   never in `db.json`, snapshots, exports or API responses.
-- Add or update tests in `tests/` for server and shared logic.
+- Tests: `node:test` tests in `tests/<layer>/` for code in `src/` (domain without fakes;
+  application with the in-memory adapters in `src/infrastructure/memory/`). The vitest suites
+  in `tests/legacy/` drive the whole app over HTTP; keep them passing.

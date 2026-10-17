@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { WORK_ITEM_TYPES } from '../../../shared/process';
-import { formatShortDate } from '../../../shared/dates';
-import type { WorkItem } from '../../../shared/types';
+import { WORK_ITEM_TYPES } from '#domain/process.ts';
+import { formatShortDate } from '#domain/dates.ts';
+import type { WorkItem } from '#domain/types.ts';
 import { EmptyState, Person, StateBadge, Tags, useMenu } from '../components/common';
 import { FilterBar } from '../components/FilterBar';
 import { Icon, TypeIcon } from '../components/Icon';

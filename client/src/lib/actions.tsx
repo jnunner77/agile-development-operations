@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { TYPE_DEFS, type WorkItemType } from '../../../shared/process';
-import { nextSprint, sprintTimeframe } from '../../../shared/sprints';
-import type { Sprint, WorkItem } from '../../../shared/types';
+import { TYPE_DEFS, type WorkItemType } from '#domain/process.ts';
+import { nextSprint, sprintTimeframe } from '#domain/sprints.ts';
+import type { Sprint, WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { Modal, confirmDialog, type MenuItem } from '../components/common';
 import { WorkItemPicker } from '../components/inputs';

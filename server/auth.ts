@@ -17,11 +17,12 @@ import {
   type ApiTokenInfo,
   type AuthUser,
   type LoginResult,
-} from '../shared/auth';
-import type { Database, Member } from '../shared/types';
-import { HttpError, badRequest, notFound } from './errors';
-import type { Store } from './store';
-import { TokenManager, createTokenSchema, tokenForbidden } from './tokens';
+} from '#application/contracts/auth.ts';
+import type { Database } from '#application/contracts/database.ts';
+import type { Member } from '#domain/types.ts';
+import { HttpError, badRequest, notFound } from './errors.ts';
+import type { Store } from '#infrastructure/json-store/store.ts';
+import { TokenManager, createTokenSchema, tokenForbidden } from './tokens.ts';
 
 // ---- Password hashing -----------------------------------------------------------
 // Passwords are never stored or recoverable. Each one is run through scrypt (a slow,
@@ -122,11 +123,10 @@ export class AuthManager {
   private readonly now: () => number;
   /** API tokens for scripts and assistants. */
   readonly tokens: TokenManager;
+  private readonly store: Store;
 
-  constructor(
-    private readonly store: Store,
-    opts: AuthOptions = {},
-  ) {
+  constructor(store: Store, opts: AuthOptions = {}) {
+    this.store = store;
     this.file = path.join(store.dataDir, 'auth.json');
     this.overridden = !!opts.disabled;
     this.now = opts.now ?? Date.now;

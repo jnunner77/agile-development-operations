@@ -4,19 +4,28 @@
   "private": true,
   "description": "A self-hosted Azure DevOps-style backlog, board and sprint management tool.",
   "type": "module",
+  "imports": {
+    "#shared/*": "./src/shared/*",
+    "#domain/*": "./src/domain/*",
+    "#application/*": "./src/application/*",
+    "#infrastructure/*": "./src/infrastructure/*",
+    "#presentation/*": "./src/presentation/*"
+  },
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "node --watch src/main.ts",
     "dev:client": "vite",
     "build": "vite build",
-    "start": "tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "start": "node src/main.ts",
+    "typecheck": "tsc -b && tsc -p client && tsc -p tests/legacy",
+    "test": "node --test \"tests/{shared,domain,application,infrastructure,presentation}/**/*.test.ts\" && vitest run",
+    "test:unit": "node --test \"tests/{shared,domain,application,infrastructure,presentation}/**/*.test.ts\"",
+    "check": "npm run typecheck && npm test",
     "test:e2e": "node e2e/smoke.mjs",
     "test:e2e:mobile": "node e2e/mobile.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   },
   "dependencies": {
     "dompurify": "^3.4.16",
@@ -24,7 +33,6 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
-    "tsx": "^4.23.15",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },

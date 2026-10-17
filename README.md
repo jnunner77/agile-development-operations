@@ -177,24 +177,45 @@ otherwise passwords travel over the network unencrypted.
 
 ## Architecture
 
+The server is moving to an *onion* architecture: business rules sit in the centre, everything
+else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
+outward. Work items, links and the recycle bin have moved; the other features follow.
+
 ```
-shared/   Domain model shared by server and client: process template (types, states),
-          types, date math, capacity & burndown calculations
-server/   Express API. JSON document store (atomic writes to data/db.json), transactions that
-          emit deltas, snapshot manager, demo seed
-client/   React + Vite single-page app (zustand store, react-router)
-tests/    Vitest unit & API tests
-e2e/      Playwright smoke test that drives the UI
+src/
+  shared/          Result and Brand helpers. Plain TypeScript.
+  domain/          Business rules, with no Node or browser APIs: the process template (types,
+                   states), dates, capacity and burndown, and the work item, link and recycle-bin
+                   aggregates with their rules, errors, events and repository interfaces.
+  application/     One class per use case (create, move, bulk edit, copy, delete, restore...), the
+                   ports they need (clock, ids, events, unit of work) and the API's data contracts.
+  infrastructure/  Adapters for those ports: the JSON document store (atomic writes to
+                   data/db.json), repositories over it, in-memory versions for tests.
+  presentation/    node:http routes: parse requests by hand, call a use case, map its errors to
+                   HTTP statuses.
+  main.ts          Starts the server. compose.ts wires the concrete classes together.
+server/   Express code for what hasn't moved yet: sprints, team, settings, sign-in, API tokens,
+          GitHub, snapshots and backups. It runs security and sign-in for every request.
+client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
+tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
+          whole app over HTTP.
+e2e/      Playwright smoke tests that drive the UI
 ```
 
-Every mutation runs in a transaction against a copy of the database; on success it is persisted and
-the changed entities are returned as a *delta* and broadcast to other clients.
+Each layer is its own TypeScript project (`src/<layer>/tsconfig.json`) and may only import the
+layers inside it. `npm run typecheck` (`tsc -b`) fails if the domain imports infrastructure, if an
+inner layer uses Node APIs such as `process` or `console`, or if code uses syntax Node can't strip
+(`enum`, constructor parameter properties). Node 22.18+ runs the TypeScript directly; there is no
+build step for the server.
+
+Every change runs as one unit of work against a copy of the database; on success it is persisted
+and the changed entities are returned as a *delta* and broadcast to other clients.
 
 ## Tests
 
 ```bash
-npm run typecheck
-npm test                          # unit + API tests
+npm run typecheck                 # tsc -b: also checks the layer boundaries
+npm test                          # node:test layer tests, then the vitest API suites
 npm run build && npm start &      # then, against a fresh demo database:
 BASE_URL=http://localhost:4000 npm run test:e2e
 BASE_URL=http://localhost:4000 npm run test:e2e:mobile   # same, as a phone (touch, small screen)

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { LoginResult } from '../../../shared/auth';
+import type { LoginResult } from '#application/contracts/auth.ts';
 import { authApi, connectEvents, loadAll } from '../api';
 import { toast, useStore } from '../store';
 import { Modal } from './common';

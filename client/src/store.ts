@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { Database, Delta, Member, RecycledItem, Sprint, SprintCapacity, WorkItem, WorkItemLink } from '../../shared/types';
-import type { AuthStatus } from '../../shared/auth';
+import type { Database, Delta } from '#application/contracts/database.ts';
+import type { Member, RecycledItem, Sprint, SprintCapacity, WorkItem, WorkItemLink } from '#domain/types.ts';
+import type { AuthStatus } from '#application/contracts/auth.ts';
 
 const USER_KEY = 'boards.currentUser';
 

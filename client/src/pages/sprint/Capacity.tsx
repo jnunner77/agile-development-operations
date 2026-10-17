@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { countDaysOff, formatRange } from '../../../../shared/dates';
-import { ACTIVITIES } from '../../../../shared/process';
-import { computeCapacity, sprintTimeframe } from '../../../../shared/sprints';
-import type { DateRange, MemberCapacity, Sprint, SprintCapacity } from '../../../../shared/types';
+import { countDaysOff, formatRange } from '#domain/dates.ts';
+import { ACTIVITIES } from '#domain/process.ts';
+import { computeCapacity, sprintTimeframe } from '#domain/sprints.ts';
+import type { DateRange, MemberCapacity, Sprint, SprintCapacity } from '#domain/types.ts';
 import { api } from '../../api';
 import { Avatar, EmptyState, Modal, useMenu } from '../../components/common';
 import { Icon } from '../../components/Icon';

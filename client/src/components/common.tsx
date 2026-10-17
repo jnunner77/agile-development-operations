@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { stateDef, type WorkItemType } from '../../../shared/process';
-import type { Member, WorkItem } from '../../../shared/types';
+import { stateDef, type WorkItemType } from '#domain/process.ts';
+import type { Member, WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { initials } from '../lib/format';
 import { useMembersById } from '../lib/hooks';

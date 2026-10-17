@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { TYPE_DEFS, type WorkItemType } from '../../../shared/process';
+import { TYPE_DEFS, type WorkItemType } from '#domain/process.ts';
 import { EMPTY_FILTERS, isFiltering, type Filters } from '../lib/filters';
 import { useSortedSprints } from '../lib/hooks';
 import { useStore } from '../store';

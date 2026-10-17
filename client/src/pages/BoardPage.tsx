@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { TYPE_DEFS, defaultState, type BacklogLevel, type WorkItemType } from '../../../shared/process';
-import { formatShortDate } from '../../../shared/dates';
-import type { WorkItem } from '../../../shared/types';
+import { TYPE_DEFS, defaultState, type BacklogLevel, type WorkItemType } from '#domain/process.ts';
+import { formatShortDate } from '#domain/dates.ts';
+import type { WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { AssigneePicker, Tags, useMenu } from '../components/common';
 import { FilterBar } from '../components/FilterBar';

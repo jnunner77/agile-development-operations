@@ -1,5 +1,5 @@
-import { formatShortDate } from '../../../shared/dates';
-import type { Member, Sprint, WorkItem } from '../../../shared/types';
+import { formatShortDate } from '#domain/dates.ts';
+import type { Member, Sprint, WorkItem } from '#domain/types.ts';
 
 export const FIELD_LABELS: Record<string, string> = {
   title: 'Title',

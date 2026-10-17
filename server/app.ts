@@ -2,20 +2,27 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'node:path';
 import fs from 'node:fs';
 import { z, ZodError } from 'zod';
-import { HttpError, badRequest } from './errors';
-import type { Member } from '../shared/types';
-import type { Store, Tx } from './store';
-import type { SnapshotManager } from './snapshots';
-import { emptyDatabase } from './schema';
-import { buildDemoDatabase } from './seed';
-import * as wi from './workitems';
-import * as team from './team';
-import { AuthManager } from './auth';
-import { Security, retryAfterOf, securityHeaders } from './security';
-import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github';
+import { HttpError, badRequest } from './errors.ts';
+import type { Caller } from '#application/caller.ts';
+import type { Member } from '#domain/types.ts';
+import { MissingRecordError, type Store, type Tx } from '#infrastructure/json-store/store.ts';
+import type { CallerResolver } from '#presentation/http/caller.ts';
+import type { Router } from '#presentation/http/router.ts';
+import type { SnapshotManager } from './snapshots.ts';
+import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
+import { buildDemoDatabase } from './seed.ts';
+import * as team from './team.ts';
+import { AuthManager } from './auth.ts';
+import { Security, retryAfterOf, securityHeaders } from './security.ts';
+import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github.ts';
+
+/** Routes served by the layered code (src/), relative to /api. */
+export type LayeredRoutes = Pick<Router, 'handle' | 'owns'>;
 
 export interface AppOptions {
   store: Store;
+  /** Builds the layered routes, given how to tell who is calling. */
+  layeredRoutes: (identify: CallerResolver) => LayeredRoutes;
   snapshots: SnapshotManager;
   staticDir?: string;
   /** Sign-in handling; one is created (sign-in off until turned on in settings) if omitted. */
@@ -24,7 +31,7 @@ export interface AppOptions {
    * Express "trust proxy" setting. Set it when running behind a reverse proxy (e.g. Caddy)
    * so the app sees the original HTTPS scheme and marks sign-in cookies as Secure.
    */
-  trustProxy?: boolean | number | string;
+  trustProxy?: boolean | number | string | undefined;
   /** Rate limits and abuse protection; pass false to turn them off (tests). */
   security?: Security | false;
   /** Source control integration; one is created if omitted. */
@@ -74,7 +81,27 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-export function createApp({ store, snapshots, staticDir, auth = new AuthManager(store), trustProxy, security = new Security(), github = new GitHubIntegration(store) }: AppOptions) {
+const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, origin: undefined };
+
+/**
+ * The Express server for everything not yet moved into the layers. It handles security, sign-in
+ * and tokens for every request, then hands work item requests to the layered routes.
+ */
+export function createExpressApp({
+  store,
+  layeredRoutes,
+  snapshots,
+  staticDir,
+  auth = new AuthManager(store),
+  trustProxy,
+  security = new Security(),
+  github = new GitHubIntegration(store),
+}: AppOptions) {
+  // Who is calling is worked out by the middleware below and handed to the layered routes.
+  const callers = new WeakMap<object, Caller>();
+  const layered = layeredRoutes((req) => callers.get(req) ?? ANONYMOUS);
+  const ownedByLayers = (req: Request) => req.path.toLowerCase().startsWith('/api/') && layered.owns(req.method, req.path.slice(4));
+
   const app = express();
   app.disable('x-powered-by');
   if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
@@ -84,7 +111,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
   // after the caller has been checked as an administrator.
   const smallJson = express.json({ limit: JSON_LIMIT });
   const ownBodyParser = new Set(['/api/backup/import', WEBHOOK_PATH]);
-  app.use((req, res, next) => (ownBodyParser.has(req.path) ? next() : smallJson(req, res, next)));
+  app.use((req, res, next) => (ownBodyParser.has(req.path) || ownedByLayers(req) ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
   const admin = auth.requireAdmin;
@@ -131,11 +158,25 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
    * With sign-in on, or for an API token, only a comment's author or an administrator (never a
    * token) may change it. With sign-in off anyone may, as with everything else.
    */
-  const commentActor = (req: Request, res: Response): wi.CommentActor => {
+  const callerOf = (req: Request, res: Response): Caller => {
     const token = !!res.locals.apiToken;
     const restricted = auth.enabled || token;
-    return { memberId: callerId(store, req, res), mayModerate: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)) };
+    return {
+      name: userName(store, req),
+      memberId: callerId(store, req, res),
+      mayModerateComments: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)),
+      origin: req.header('x-client-id'),
+    };
   };
+
+  // Work items, links and the recycle bin.
+  api.use((req, res, next) => {
+    if (!layered.owns(req.method, req.path)) return next();
+    callers.set(req, callerOf(req, res));
+    layered.handle(req, res).then((handled) => {
+      if (!handled) next();
+    }, next);
+  });
 
   api.get('/bootstrap', (_req, res) => {
     res.json({ db: store.db, serverTime: new Date().toISOString() });
@@ -172,62 +213,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     });
   });
 
-  // ---- Work items -------------------------------------------------------------
-  api.post(
-    '/workitems',
-    mutate((tx, req) => wi.createWorkItem(tx, wi.workItemCreateSchema.parse(req.body)), 201),
-  );
-  api.patch(
-    '/workitems/:id',
-    mutate((tx, req) => wi.updateWorkItem(tx, intParam(req.params.id), wi.workItemPatchSchema.parse(req.body))),
-  );
-  api.delete(
-    '/workitems/:id',
-    mutate((tx, req) => wi.deleteWorkItem(tx, intParam(req.params.id))),
-  );
-  api.post(
-    '/workitems/:id/move',
-    mutate((tx, req) => wi.moveWorkItem(tx, intParam(req.params.id), wi.moveSchema.parse(req.body))),
-  );
-  api.post(
-    '/workitems/:id/copy',
-    mutate(
-      (tx, req) => wi.copyWorkItem(tx, intParam(req.params.id), z.object({ includeChildren: z.boolean().optional() }).parse(req.body ?? {}).includeChildren ?? false),
-      201,
-    ),
-  );
-  api.post(
-    '/workitems/bulk',
-    mutate((tx, req) => wi.bulkUpdate(tx, wi.bulkSchema.parse(req.body))),
-  );
-  api.post(
-    '/workitems/bulk-delete',
-    mutate((tx, req) => {
-      const { ids } = z.object({ ids: z.array(z.number().int()).min(1) }).parse(req.body);
-      for (const id of ids) if (tx.db.workItems.some((w) => w.id === id)) wi.deleteWorkItem(tx, id);
-    }),
-  );
-  api.post(
-    '/workitems/:id/comments',
-    mutate((tx, req, res) => wi.addComment(tx, intParam(req.params.id), wi.commentSchema.parse(req.body).text, callerId(store, req, res)), 201),
-  );
-  api.patch(
-    '/workitems/:id/comments/:commentId',
-    mutate((tx, req, res) => wi.editComment(tx, intParam(req.params.id), String(req.params.commentId), wi.commentSchema.parse(req.body).text, commentActor(req, res))),
-  );
-  api.delete(
-    '/workitems/:id/comments/:commentId',
-    mutate((tx, req, res) => wi.deleteComment(tx, intParam(req.params.id), String(req.params.commentId), commentActor(req, res))),
-  );
-  api.post(
-    '/workitems/:id/hyperlinks',
-    mutate((tx, req) => wi.addHyperlink(tx, intParam(req.params.id), wi.hyperlinkSchema.parse(req.body)), 201),
-  );
-  api.delete(
-    '/workitems/:id/hyperlinks/:linkId',
-    mutate((tx, req) => wi.removeHyperlink(tx, intParam(req.params.id), String(req.params.linkId))),
-  );
-
+  // ---- Work item development links (GitHub) -----------------------------------
   api.delete(
     '/workitems/:id/devlinks/:linkId',
     mutate((tx, req) => github.removeLink(tx, intParam(req.params.id), String(req.params.linkId))),
@@ -245,24 +231,6 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
     const secret = github.rotateSecret();
     res.json({ secret, view: github.adminView() });
   });
-
-  api.post(
-    '/links',
-    mutate((tx, req) => wi.addLink(tx, wi.linkSchema.parse(req.body)), 201),
-  );
-  api.delete(
-    '/links/:id',
-    mutate((tx, req) => wi.removeLink(tx, String(req.params.id))),
-  );
-
-  api.post(
-    '/recycle-bin/:id/restore',
-    mutate((tx, req) => wi.restoreWorkItem(tx, intParam(req.params.id))),
-  );
-  api.delete(
-    '/recycle-bin/:id',
-    mutate((tx, req) => wi.purgeWorkItem(tx, intParam(req.params.id))),
-  );
 
   // ---- Sprints & capacity -----------------------------------------------------
   api.post(
@@ -384,6 +352,7 @@ export function createApp({ store, snapshots, staticDir, auth = new AuthManager(
       const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
       return res.status(400).json({ error: `${where}${issue?.message ?? 'Invalid request'}` });
     }
+    if (err instanceof MissingRecordError) return res.status(404).json({ error: err.message });
     if (err instanceof HttpError) {
       const retryAfter = retryAfterOf(err);
       if (retryAfter) res.setHeader('Retry-After', String(retryAfter));

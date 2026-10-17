@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { BACKLOG_LEVELS, TYPE_DEFS, canBeParent, stateCategory, type BacklogLevel, type WorkItemType } from '../../../shared/process';
-import { formatDayMonth, formatShortDate, workingDaysBetween } from '../../../shared/dates';
-import { sprintTimeframe } from '../../../shared/sprints';
-import type { WorkItem } from '../../../shared/types';
+import { BACKLOG_LEVELS, TYPE_DEFS, canBeParent, stateCategory, type BacklogLevel, type WorkItemType } from '#domain/process.ts';
+import { formatDayMonth, formatShortDate, workingDaysBetween } from '#domain/dates.ts';
+import { sprintTimeframe } from '#domain/sprints.ts';
+import type { WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { EmptyState, Person, StateBadge, Tags, useMenu } from '../components/common';
 import { FilterBar } from '../components/FilterBar';

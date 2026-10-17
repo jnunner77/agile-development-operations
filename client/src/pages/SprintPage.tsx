@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { formatDayMonth, formatShortDate } from '../../../shared/dates';
-import { BACKLOG_LEVELS, isClosed } from '../../../shared/process';
-import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, sprintTimeframe } from '../../../shared/sprints';
-import type { Sprint, SprintCapacity } from '../../../shared/types';
+import { formatDayMonth, formatShortDate } from '#domain/dates.ts';
+import { BACKLOG_LEVELS, isClosed } from '#domain/process.ts';
+import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, sprintTimeframe } from '#domain/sprints.ts';
+import type { Sprint, SprintCapacity } from '#domain/types.ts';
 import { api } from '../api';
 import { EmptyState, ProgressBar, confirmDialog, useMenu } from '../components/common';
 import { Icon } from '../components/Icon';

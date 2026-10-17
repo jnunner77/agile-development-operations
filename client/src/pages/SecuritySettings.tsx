@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EXPIRY_DAYS_MAX, SESSION_TIMEOUT_MAX, SESSION_TIMEOUT_MIN, type AccountSummary, type ApiTokenInfo, type AuthAdminView } from '../../../shared/auth';
-import type { Member } from '../../../shared/types';
+import { EXPIRY_DAYS_MAX, SESSION_TIMEOUT_MAX, SESSION_TIMEOUT_MIN, type AccountSummary, type ApiTokenInfo, type AuthAdminView } from '#application/contracts/auth.ts';
+import type { Member } from '#domain/types.ts';
 import { authApi, requireSignIn, tokensApi } from '../api';
 import { Avatar, Modal, confirmDialog } from '../components/common';
 import { Icon } from '../components/Icon';

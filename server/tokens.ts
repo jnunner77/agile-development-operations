@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { ApiTokenInfo, ApiTokenScope } from '../shared/auth';
-import type { Member } from '../shared/types';
-import { HttpError, badRequest, notFound } from './errors';
-import type { Store } from './store';
+import type { ApiTokenInfo, ApiTokenScope } from '#application/contracts/auth.ts';
+import type { Member } from '#domain/types.ts';
+import { HttpError, badRequest, notFound } from './errors.ts';
+import type { Store } from '#infrastructure/json-store/store.ts';
 
 // API tokens let scripts and assistants use the API without a password. A token acts as
 // one team member, is read-only or read & write, always expires, and can be revoked. Only a
@@ -51,10 +51,12 @@ export class TokenManager {
   private readonly file: string;
   private readonly lastWrite = new Map<string, number>();
 
-  constructor(
-    private readonly store: Store,
-    private readonly now: () => number = Date.now,
-  ) {
+  private readonly store: Store;
+  private readonly now: () => number;
+
+  constructor(store: Store, now: () => number = Date.now) {
+    this.store = store;
+    this.now = now;
     this.file = path.join(store.dataDir, 'api-tokens.json');
     if (fs.existsSync(this.file)) this.tokens = (JSON.parse(fs.readFileSync(this.file, 'utf8')) as { tokens?: StoredToken[] }).tokens ?? [];
     this.prune();

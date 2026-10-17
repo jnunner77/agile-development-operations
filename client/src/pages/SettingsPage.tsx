@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { formatShortDate, workingDaysBetween } from '../../../shared/dates';
-import { sprintTimeframe } from '../../../shared/sprints';
-import { MAX_MANUAL_SNAPSHOTS, type Member, type SnapshotMeta, type Sprint } from '../../../shared/types';
+import { formatShortDate, workingDaysBetween } from '#domain/dates.ts';
+import { sprintTimeframe } from '#domain/sprints.ts';
+import { MAX_MANUAL_SNAPSHOTS, type SnapshotMeta } from '#application/contracts/database.ts';
+import type { Member, Sprint } from '#domain/types.ts';
 import { api } from '../api';
 import { Avatar, EmptyState, Modal, StateBadge, confirmDialog } from '../components/common';
 import { Icon, TypeIcon } from '../components/Icon';

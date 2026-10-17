@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { workingDaysBetween } from '../../../shared/dates';
-import { suggestNextSprint } from '../../../shared/sprints';
-import type { Sprint } from '../../../shared/types';
+import { workingDaysBetween } from '#domain/dates.ts';
+import { suggestNextSprint } from '#domain/sprints.ts';
+import type { Sprint } from '#domain/types.ts';
 import { api } from '../api';
 import { useToday } from '../lib/hooks';
 import { toast, useStore } from '../store';

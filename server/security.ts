@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { HttpError } from './errors';
+import { HttpError } from './errors.ts';
 
 // Defensive middleware for running on the open internet: rate limits, temporary bans for
 // abusive clients, a cap on concurrent password hashing, cross-site request checks and
@@ -87,11 +87,15 @@ export function ipMatcher(entries: string[]): (ip: string) => boolean {
 export class TokenBucket {
   private readonly buckets = new Map<string, { tokens: number; at: number }>();
 
-  constructor(
-    private readonly limit: Limit,
-    private readonly maxKeys: number,
-    private readonly now: () => number,
-  ) {}
+  private readonly limit: Limit;
+  private readonly maxKeys: number;
+  private readonly now: () => number;
+
+  constructor(limit: Limit, maxKeys: number, now: () => number) {
+    this.limit = limit;
+    this.maxKeys = maxKeys;
+    this.now = now;
+  }
 
   /** Try to spend one token; returns milliseconds to wait when the bucket is empty. */
   take(key: string): { ok: true } | { ok: false; retryAfterMs: number } {
@@ -144,11 +148,15 @@ export class TokenBucket {
 class EventCounter {
   private readonly events = new Map<string, number[]>();
 
-  constructor(
-    private readonly windowMs: number,
-    private readonly maxKeys: number,
-    private readonly now: () => number,
-  ) {}
+  private readonly windowMs: number;
+  private readonly maxKeys: number;
+  private readonly now: () => number;
+
+  constructor(windowMs: number, maxKeys: number, now: () => number) {
+    this.windowMs = windowMs;
+    this.maxKeys = maxKeys;
+    this.now = now;
+  }
 
   add(key: string): number {
     const now = this.now();

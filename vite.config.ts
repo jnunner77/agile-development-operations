@@ -18,7 +18,7 @@ export default defineConfig({
   },
   test: {
     root: '.',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/legacy/**/*.test.ts'],
     environment: 'node',
   },
 } as any);

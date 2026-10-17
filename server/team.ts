@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { isValidDate } from '../shared/dates';
-import type { SprintCapacity } from '../shared/types';
-import { badRequest } from './errors';
-import { applyPatch } from './workitems';
-import type { Tx } from './store';
+import { isValidDate } from '#domain/dates.ts';
+import type { SprintCapacity } from '#domain/types.ts';
+import { badRequest } from './errors.ts';
+import { applyPatch } from './workitems.ts';
+import type { Tx } from '#infrastructure/json-store/store.ts';
 
 const date = z.string().refine(isValidDate, 'Expected a date in YYYY-MM-DD format');
 const range = z

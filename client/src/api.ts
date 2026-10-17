@@ -1,9 +1,7 @@
+import type { Database, Delta, SnapshotMeta } from '#application/contracts/database.ts';
 import type {
-  Database,
-  Delta,
   DateRange,
   Member,
-  SnapshotMeta,
   Settings,
   Sprint,
   SprintCapacity,
@@ -11,10 +9,10 @@ import type {
   WorkItemLink,
   Comment,
   Hyperlink,
-} from '../../shared/types';
-import type { LinkType, WorkItemType } from '../../shared/process';
-import type { ApiTokenInfo, ApiTokenScope, AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '../../shared/auth';
-import type { GitHubAdminView, GitHubSettings } from '../../shared/integrations';
+} from '#domain/types.ts';
+import type { LinkType, WorkItemType } from '#domain/process.ts';
+import type { ApiTokenInfo, ApiTokenScope, AuthAdminView, AuthSettings, AuthStatus, LoginResult } from '#application/contracts/auth.ts';
+import type { GitHubAdminView, GitHubSettings } from '#application/contracts/integrations.ts';
 import { StreamVersion, loadFresh } from './lib/stream';
 import { applyDelta, setDatabase, toast, useStore } from './store';
 

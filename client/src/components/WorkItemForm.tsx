@@ -13,9 +13,9 @@ import {
   defaultState,
   type LinkType,
   type WorkItemType,
-} from '../../../shared/process';
-import { sprintTimeframe } from '../../../shared/sprints';
-import type { Comment, WorkItem } from '../../../shared/types';
+} from '#domain/process.ts';
+import { sprintTimeframe } from '#domain/sprints.ts';
+import type { Comment, WorkItem } from '#domain/types.ts';
 import { api, type WorkItemFields } from '../api';
 import { FIELD_LABELS, HTML_FIELDS, formatDateTime, formatFieldValue, formatHours, timeAgo } from '../lib/format';
 import { rollup, useChildrenMap, useItemsById, useSortedSprints, useToday } from '../lib/hooks';
