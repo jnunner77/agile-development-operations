@@ -8,4 +8,9 @@ export interface RequestContext {
   readonly identity: (req: IncomingMessage, res: ServerResponse) => RequestIdentity;
   /** Whether the request reached the server over HTTPS (behind a proxy, as the proxy says). */
   readonly secure: (req: IncomingMessage, res: ServerResponse) => boolean;
+  /**
+   * Count an expensive operation (snapshots, backups) against the caller's limit. False when they
+   * are over it, and the 429 answer has already been sent.
+   */
+  readonly heavyOperation: (req: IncomingMessage, res: ServerResponse) => boolean;
 }

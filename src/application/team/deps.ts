@@ -1,4 +1,5 @@
 import type { Member, MemberError } from '#domain/team/member.ts';
+import type { Member as MemberRecord } from '#domain/types.ts';
 import type { WorkItemError } from '#domain/work-items/errors.ts';
 import { err, ok, type Result } from '#shared/result.ts';
 import type { AccessError } from '../access.ts';
@@ -22,11 +23,18 @@ export async function checkAdminRemains(
   deps: Pick<AppDeps, 'accounts' | 'signInSettings' | 'signInForcedOff'>,
   team: readonly Member[],
 ): Promise<Result<void, LastAdminError>> {
+  return checkAdminKept(
+    deps,
+    team.map((m) => m.toSnapshot()),
+  );
+}
+
+/** The same check for a whole team as stored, such as one a restore or an import brings in. */
+export async function checkAdminKept(
+  deps: Pick<AppDeps, 'accounts' | 'signInSettings' | 'signInForcedOff'>,
+  team: readonly MemberRecord[],
+): Promise<Result<void, LastAdminError>> {
   const { enabled } = await signInState(deps);
   if (!enabled) return ok(undefined);
-  const keeps = hasUsableAdmin(
-    team.map((m) => m.toSnapshot()),
-    accountsByMember(await deps.accounts.all()),
-  );
-  return keeps ? ok(undefined) : err({ code: 'LAST_ADMIN' });
+  return hasUsableAdmin(team, accountsByMember(await deps.accounts.all())) ? ok(undefined) : err({ code: 'LAST_ADMIN' });
 }

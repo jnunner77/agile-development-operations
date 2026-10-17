@@ -180,7 +180,8 @@ otherwise passwords travel over the network unencrypted.
 The server is moving to an *onion* architecture: business rules sit in the centre, everything
 else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
 outward. Work items, links, the recycle bin, sprints, capacity, team members, project settings,
-sign-in, API tokens and the GitHub integration have moved; snapshots and backups follow.
+sign-in, API tokens, the GitHub integration, snapshots and backups have moved. What remains in
+Express is the request pipeline itself (rate limits, the live update stream, static files).
 
 ```
 src/
@@ -189,27 +190,30 @@ src/
                    states), dates, capacity and burndown, and the aggregates (work items with their
                    development links, links, recycle bin, sprints, capacity plans, team members,
                    project settings, sign-in accounts and settings, API tokens, the GitHub
-                   integration) with their rules (passwords, lockout, sessions, keeping an
-                   administrator, what source control activity links to and how it moves work
-                   along the board), errors, events and repository interfaces.
+                   integration, snapshots) with their rules (passwords, lockout, sessions, keeping
+                   an administrator, what source control activity links to and how it moves work
+                   along the board, the snapshot cap, schedule and retention), errors, events and
+                   repository interfaces.
   application/     One class per use case (create, move, bulk edit, copy, restore; sprints,
                    capacity, members, settings; sign in, identify a caller, passwords, tokens;
-                   receive a GitHub delivery, its settings and secret), who may administer the
-                   project, the ports they need (clock, ids, events, unit of work, password
-                   hashing, secrets, webhook signatures, GitHub payloads) and the API's data
-                   contracts.
+                   receive a GitHub delivery, its settings and secret; take, restore and download
+                   snapshots, export, import and reset, the scheduled snapshot), who may
+                   administer the project, the ports they need (clock, ids, events, unit of work,
+                   password hashing, secrets, webhook signatures, GitHub payloads, snapshots, the
+                   whole project) and the API's data contracts.
   infrastructure/  Adapters for those ports: the JSON document store (atomic writes to
                    data/db.json) and repositories over it; auth.json, api-tokens.json and
-                   integrations.json (kept apart, readable by the server only); scrypt; HMAC
-                   webhook signatures and the translation of GitHub's payloads; in-memory
-                   sessions, lockouts and recent deliveries; in-memory versions of everything
-                   for tests.
+                   integrations.json (kept apart, readable by the server only); snapshot files
+                   (data/snapshots); the demo project; scrypt; HMAC webhook signatures and the
+                   translation of GitHub's payloads; in-memory sessions, lockouts and recent
+                   deliveries; a scheduler; in-memory versions of everything for tests.
   presentation/    node:http routes: parse requests by hand, call a use case, map its errors to
                    HTTP statuses. Also the session cookie, the gate that decides which requests
                    need signing in, and the GitHub webhook (checked before its body is read).
   main.ts          Starts the server. compose.ts wires the concrete classes together.
-server/   Express code for what hasn't moved yet: snapshots and backups, the live update stream
-          and rate limits. It asks the layers who is calling for every request.
+server/   The Express request pipeline: security headers, rate limits and bans, the live update
+          stream, bootstrap and static files. It asks the layers who is calling for every request
+          and hands the moved routes to them.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
 tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
           whole app over HTTP.

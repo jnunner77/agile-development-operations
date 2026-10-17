@@ -5,22 +5,19 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
-import { buildDemoDatabase } from '../../server/seed.ts';
+import { buildDemoDatabase } from '#infrastructure/json-store/demo-project.ts';
 import type { Delta } from '#application/contracts/database.ts';
 import type { WorkItem } from '#domain/types.ts';
 
 let dir: string;
 let store: Store;
-let snapshots: SnapshotManager;
 let app: ReturnType<typeof createApp>;
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-test-'));
   store = new Store(dir, () => emptyDatabase());
-  snapshots = new SnapshotManager(store);
-  app = createApp({ store, snapshots });
+  app = createApp({ store });
 });
 
 afterEach(() => {
@@ -293,7 +290,7 @@ describe('snapshots and backups', () => {
 
   it('caps snapshots taken by hand, but never safety snapshots', async () => {
     // Without rate limits, which would otherwise stop this many snapshots in a row.
-    const app = createApp({ store, snapshots: new SnapshotManager(store), security: false });
+    const app = createApp({ store, security: false });
     const take = () => request(app).post('/api/snapshots').send({ name: 'Mine' });
     for (let i = 0; i < 50; i++) expect((await take()).status).toBe(201);
     const refused = await take();
@@ -318,22 +315,6 @@ describe('snapshots and backups', () => {
     expect((await request(app).post('/api/backup/import').send({ nope: true })).status).toBe(400);
     expect((await request(app).post('/api/backup/import').send(exported)).status).toBe(200);
     expect(store.db.workItems[0].title).toBe('Keep me');
-  });
-
-  it('takes automatic snapshots on schedule and prunes old ones', async () => {
-    store.db.settings.backup = { autoEnabled: true, intervalHours: 1, retain: 2 };
-    const t0 = Date.now();
-    expect(snapshots.tick(t0)).toBeDefined();
-    expect(snapshots.tick(t0 + 1000)).toBeUndefined();
-    expect(snapshots.tick(t0 + 3_700_000)).toBeDefined();
-    await request(app).post('/api/snapshots').send({ name: 'Manual' });
-    snapshots.create('', '', 'auto', 'System');
-    snapshots.create('', '', 'auto', 'System');
-    const list = snapshots.list();
-    expect(list.filter((s) => s.kind === 'auto')).toHaveLength(2);
-    expect(list.filter((s) => s.kind === 'manual')).toHaveLength(1);
-    store.db.settings.backup.autoEnabled = false;
-    expect(snapshots.tick(t0 + 99_000_000)).toBeUndefined();
   });
 
   it('persists to disk and reloads', async () => {

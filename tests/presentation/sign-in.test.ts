@@ -62,7 +62,7 @@ describe('sign-in routes', () => {
   const view = { settings: { enabled: true, passwordExpiryDays: 60, sessionTimeoutMinutes: 60 }, overridden: false, accounts: [] };
   const status = { enabled: true, overridden: false, user: null, settings: view.settings, passwordMinLength: 8 };
   const routes = signInRoutes({
-    context: { caller: () => caller, identity: () => ({ identity, sessionToken: 'old-session' }), secure: () => secure },
+    context: { caller: () => caller, identity: () => ({ identity, sessionToken: 'old-session' }), secure: () => secure, heavyOperation: () => true },
     getSignInStatus: { execute: async () => status },
     signIn: {
       execute: async (input) => {
