@@ -8,7 +8,7 @@ import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { httpFailure } from '#presentation/http/errors.ts';
 import { JSON_LIMIT_BYTES } from '#presentation/http/body.ts';
 import { parseReset, parseSnapshotDetails } from '#presentation/backups/parsers.ts';
-import { backupRoutes, type BackupRouteDeps } from '#presentation/backups/routes.ts';
+import { IMPORT_LIMIT_BYTES, backupRoutes, type BackupRouteDeps } from '#presentation/backups/routes.ts';
 import { err, ok } from '#shared/result.ts';
 
 let caller: Caller = { name: 'Ann', memberId: 'm1', mayModerateComments: false, admin: 'granted', origin: undefined };
@@ -179,10 +179,27 @@ describe('snapshot and backup routes', () => {
     assert.deepEqual(steps, ['heavy, body unread', 'reset']);
   });
 
-  it('accept a large body only for an administrator import', async () => {
+  it('accept a large body only for an administrator import, up to its limit', async () => {
     const big = JSON.stringify({ workItems: [], padding: 'x'.repeat(JSON_LIMIT_BYTES + 10) });
     assert.equal((await call('POST', '/backup/import', big)).status, 200);
     assert.equal((await call('POST', '/snapshots', big)).status, 413);
+    // Over the import limit: refused from the declared size, before anything is read.
+    calls = [];
+    const tooLarge = await new Promise<number | undefined>((resolve, reject) => {
+      const req = http.request(`${base}/backup/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': IMPORT_LIMIT_BYTES + 1, Connection: 'close' },
+      });
+      req.on('response', (res) => {
+        res.resume();
+        resolve(res.statusCode);
+        req.destroy();
+      });
+      req.on('error', reject);
+      req.write('{"workItems":[');
+    });
+    assert.equal(tooLarge, 413);
+    assert.deepEqual(calls, []);
     const malformed = await call('POST', '/backup/import', '{');
     assert.deepEqual([malformed.status, malformed.body], [400, { error: 'Malformed JSON' }]);
   });

@@ -19,6 +19,7 @@ function isMeta(v: unknown): v is SnapshotMeta {
     typeof kind === 'string' &&
     KINDS.includes(kind) &&
     typeof createdAt === 'string' &&
+    !Number.isNaN(Date.parse(createdAt)) &&
     typeof createdBy === 'string' &&
     typeof sizeBytes === 'number' &&
     isRecord(stats)

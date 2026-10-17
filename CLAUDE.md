@@ -65,8 +65,8 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
     `adminAccessOf`); routes that need it check before reading the request, as the Express routes
     did. Who is calling comes from `IdentifyCaller` (session cookie or API token), and
     `presentation/sign-in/gate.ts` decides which requests need signing in, also for `server/`.
-- No new runtime dependencies in `src/`. Express and zod remain only in `server/` until the
-  request pipeline moves into the layers too.
+- No new runtime dependencies in `src/`. Express remains only in `server/` until the request
+  pipeline moves into the layers too.
 - Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`), so it is
   validated, persisted, recorded in work item history and broadcast to browsers as deltas, or not
   applied at all. Replacing the whole project (restore, import, reset) runs exclusively through

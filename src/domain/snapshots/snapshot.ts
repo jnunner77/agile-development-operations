@@ -147,7 +147,9 @@ export class Snapshot {
     return ok(snapshot);
   }
 
+  /** Rebuild from stored details. Throws only if they are corrupt. */
   static reconstitute(meta: SnapshotMeta): Snapshot {
+    if (!toSnapshotId(meta.id).ok) throw new Error(`Stored snapshot has an invalid id: ${meta.id}`);
     return new Snapshot({ ...meta, stats: { ...meta.stats } });
   }
 

@@ -1,7 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { ZodError } from 'zod';
 import { HttpError } from './errors.ts';
 import { adminAccessOf, mayModerateCommentsOf } from '#application/access.ts';
 import type { Caller } from '#application/caller.ts';
@@ -265,11 +264,6 @@ export function createExpressApp({
   }
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ZodError) {
-      const issue = err.issues[0];
-      const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
-      return res.status(400).json({ error: `${where}${issue?.message ?? 'Invalid request'}` });
-    }
     if (err instanceof MissingRecordError) return res.status(404).json({ error: err.message });
     if (err instanceof RejectedChangeError) return res.status(400).json({ error: err.message });
     if (err instanceof HttpError) {

@@ -38,7 +38,7 @@ export class MemorySnapshotRepository implements SnapshotRepository {
 
   async file(id: SnapshotId): Promise<Uint8Array | undefined> {
     const stored = this.#snapshots.get(id);
-    return stored ? new TextEncoder().encode(JSON.stringify({ meta: stored.meta, data: JSON.parse(stored.json) })) : undefined;
+    return stored ? new TextEncoder().encode(JSON.stringify({ format: 'ado-clone-snapshot', meta: stored.meta, data: JSON.parse(stored.json) })) : undefined;
   }
 }
 

@@ -181,7 +181,8 @@ The server is moving to an *onion* architecture: business rules sit in the centr
 else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
 outward. Work items, links, the recycle bin, sprints, capacity, team members, project settings,
 sign-in, API tokens, the GitHub integration, snapshots and backups have moved. What remains in
-Express is the request pipeline itself (rate limits, the live update stream, static files).
+Express is the request pipeline itself (rate limits, the live update stream, bootstrap and
+health, static files).
 
 ```
 src/
@@ -212,7 +213,7 @@ src/
                    need signing in, and the GitHub webhook (checked before its body is read).
   main.ts          Starts the server. compose.ts wires the concrete classes together.
 server/   The Express request pipeline: security headers, rate limits and bans, the live update
-          stream, bootstrap and static files. It asks the layers who is calling for every request
+          stream, bootstrap, health and static files. It asks the layers who is calling for every request
           and hands the moved routes to them.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
 tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
