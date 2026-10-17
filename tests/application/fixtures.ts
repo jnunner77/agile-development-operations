@@ -13,6 +13,7 @@ import { MemoryCapacityRepository, MemorySprintRepository } from '#infrastructur
 import type { Member, Sprint } from '#domain/types.ts';
 import { MemoryRecycleBinRepository } from '#infrastructure/memory/recycle-bin-repository.ts';
 import { MemoryUnitOfWork } from '#infrastructure/memory/unit-of-work.ts';
+import { SerialQueue } from '#infrastructure/serial-writes.ts';
 import { MemoryWorkItemRepository } from '#infrastructure/memory/work-item-repository.ts';
 import type { Result } from '#shared/result.ts';
 
@@ -69,6 +70,7 @@ export function setup() {
       newApiToken: () => `boards_secret${++secret}`,
       digest: (s) => `digest:${s}`,
     },
+    signInWrites: new SerialQueue(),
     signInForcedOff: false,
     clock: { now: () => new Date(clock.at) },
     ids: { next: () => `id-${++n}` },

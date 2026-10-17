@@ -1,3 +1,4 @@
+import type { Account } from '#domain/sign-in/account.ts';
 import { hasUsableAdmin } from '#domain/sign-in/admins.ts';
 import { lockoutKey } from '#domain/sign-in/lockout.ts';
 import { err, ok, type Result } from '#shared/result.ts';
@@ -22,15 +23,20 @@ export class ResetPassword {
     const deps = this.#deps;
     const member = await findTeamMember(deps, input.memberId);
     if (!member.ok) return member;
-    const account = await deps.accounts.get(input.memberId);
-    account.clearPassword(deps.clock.now());
-    const { enabled } = await signInState(deps);
-    if (enabled && !hasUsableAdmin(await deps.team.all(), await accountsWith(deps, account))) return err({ code: 'ACCOUNT_IS_LAST_ADMIN' });
-    await deps.accounts.save(account);
+    const saved = await deps.signInWrites.run(async (): Promise<Result<Account, SignInError>> => {
+      const account = await deps.accounts.get(input.memberId);
+      account.clearPassword(deps.clock.now());
+      const { enabled } = await signInState(deps);
+      if (enabled && !hasUsableAdmin(await deps.team.all(), await accountsWith(deps, account))) return err({ code: 'ACCOUNT_IS_LAST_ADMIN' });
+      // Revoke first: if anything below fails, what acted as them is already gone.
+      await endSessions(deps, input.memberId);
+      await revokeTokens(deps, input.memberId);
+      await deps.accounts.save(account);
+      return ok(account);
+    });
+    if (!saved.ok) return saved;
     if (member.value.username) await deps.failedAttempts.delete(lockoutKey(member.value.username));
-    await endSessions(deps, input.memberId);
-    await revokeTokens(deps, input.memberId);
-    await publish(deps, account);
+    await publish(deps, saved.value);
     return ok(await adminView(deps));
   }
 }

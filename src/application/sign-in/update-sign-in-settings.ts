@@ -1,5 +1,5 @@
 import { accountsByMember, hasUsableAdmin } from '#domain/sign-in/admins.ts';
-import { SignInSettingsChanges, type SignInSettingsInput } from '#domain/sign-in/settings.ts';
+import { SignInSettingsChanges, type SignInSettings, type SignInSettingsInput } from '#domain/sign-in/settings.ts';
 import { ok, type Result } from '#shared/result.ts';
 import { requireAdmin } from '../access.ts';
 import type { Caller } from '../caller.ts';
@@ -24,12 +24,16 @@ export class UpdateSignInSettings {
     const changes = SignInSettingsChanges.validate(input);
     if (!changes.ok) return changes;
     const deps = this.#deps;
-    const settings = await deps.signInSettings.get();
-    const usableAdmin = hasUsableAdmin(await deps.team.all(), accountsByMember(await deps.accounts.all()));
-    const updated = settings.update(changes.value, usableAdmin, deps.clock.now());
-    if (!updated.ok) return updated;
-    await deps.signInSettings.save(settings);
-    await publish(deps, settings);
+    const saved = await deps.signInWrites.run(async (): Promise<Result<SignInSettings, SignInError>> => {
+      const settings = await deps.signInSettings.get();
+      const usableAdmin = hasUsableAdmin(await deps.team.all(), accountsByMember(await deps.accounts.all()));
+      const updated = settings.update(changes.value, usableAdmin, deps.clock.now());
+      if (!updated.ok) return updated;
+      await deps.signInSettings.save(settings);
+      return ok(settings);
+    });
+    if (!saved.ok) return saved;
+    await publish(deps, saved.value);
     return ok(await adminView(deps));
   }
 }

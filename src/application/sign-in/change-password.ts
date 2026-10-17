@@ -1,3 +1,4 @@
+import type { Account } from '#domain/sign-in/account.ts';
 import { lockoutKey } from '#domain/sign-in/lockout.ts';
 import { checkNewPassword, checkPresentedPassword } from '#domain/sign-in/password.ts';
 import { checkTypedUsername, memberForUsername } from '#domain/sign-in/usernames.ts';
@@ -52,13 +53,18 @@ export class ChangePassword {
     }
     if (await deps.hasher.verify(input.newPassword, before)) return err({ code: 'PASSWORD_UNCHANGED' });
     const hash = await deps.hasher.hash(input.newPassword);
-    // Another request may have changed the password while this one was hashing.
-    const account = await deps.accounts.get(member.id);
-    if (account.passwordHash !== before) return err({ code: 'PASSWORD_CHANGED_MEANWHILE' });
+    const saved = await deps.signInWrites.run(async (): Promise<Result<Account, SignInError>> => {
+      // Another request may have changed the password while this one was hashing.
+      const account = await deps.accounts.get(member.id);
+      if (account.passwordHash !== before) return err({ code: 'PASSWORD_CHANGED_MEANWHILE' });
+      account.setPassword(hash, deps.clock.now(), false);
+      await deps.accounts.save(account);
+      return ok(account);
+    });
+    if (!saved.ok) return saved;
+    const account = saved.value;
 
     await deps.failedAttempts.delete(key);
-    account.setPassword(hash, deps.clock.now(), false);
-    await deps.accounts.save(account);
     await endSessions(deps, member.id);
     const sessionToken = await startSession(deps, member.id);
     await publish(deps, account);

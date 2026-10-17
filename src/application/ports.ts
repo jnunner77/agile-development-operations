@@ -59,3 +59,11 @@ export interface TeamDirectory {
   all(): Promise<Member[]>;
   findById(id: string): Promise<Member | undefined>;
 }
+
+/**
+ * Runs read-change-write steps one at a time, so two of them can't each read the same account or
+ * token list and the second write undo the first.
+ */
+export interface SerialWrites {
+  run<T>(work: () => Promise<T>): Promise<T>;
+}

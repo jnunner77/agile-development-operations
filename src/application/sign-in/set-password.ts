@@ -41,12 +41,16 @@ export class SetPassword {
     if (!allowed.ok) return allowed;
 
     const hash = await deps.hasher.hash(input.password);
-    const account = await deps.accounts.get(input.memberId);
-    account.setPassword(hash, deps.clock.now(), input.mustChange ?? true);
-    await deps.accounts.save(account);
+    const account = await deps.signInWrites.run(async () => {
+      // Revoke first: if anything below fails, what acted as them is already gone.
+      await endSessions(deps, input.memberId);
+      await revokeTokens(deps, input.memberId);
+      const changed = await deps.accounts.get(input.memberId);
+      changed.setPassword(hash, deps.clock.now(), input.mustChange ?? true);
+      await deps.accounts.save(changed);
+      return changed;
+    });
     await deps.failedAttempts.delete(lockoutKey(username));
-    await endSessions(deps, input.memberId);
-    await revokeTokens(deps, input.memberId);
     await publish(deps, account);
     return ok(await adminView(deps));
   }

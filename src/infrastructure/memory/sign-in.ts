@@ -67,6 +67,16 @@ export class MemoryApiTokenRepository implements ApiTokenRepository {
     this.#rows = this.#rows.filter((r) => r.id !== id);
   }
 
+  async deleteMany(ids: readonly string[]): Promise<void> {
+    this.#rows = this.#rows.filter((r) => !ids.includes(r.id));
+  }
+
+  async deleteForMember(memberId: string): Promise<string[]> {
+    const ids = this.#rows.filter((r) => r.memberId === memberId).map((r) => r.id);
+    await this.deleteMany(ids);
+    return ids;
+  }
+
   rows(): StoredApiToken[] {
     return this.#rows.map((r) => ({ ...r }));
   }

@@ -20,6 +20,8 @@ export interface SessionRepository {
   forMember(memberId: string): Promise<Session[]>;
   all(): Promise<Session[]>;
   save(session: Session): Promise<void>;
+  /** Mark a session as used. A session ended meanwhile stays ended. */
+  touch(token: string, lastSeen: number): Promise<void>;
   delete(token: string): Promise<void>;
 }
 
@@ -28,4 +30,6 @@ export interface FailedAttemptsRepository {
   all(): Promise<[string, FailedAttempts][]>;
   save(key: string, record: FailedAttempts): Promise<void>;
   delete(key: string): Promise<void>;
+  /** Drop records that no longer matter. Adapters may skip this if they swept within the last minute. */
+  sweep(now: Date, forgotten: (record: FailedAttempts) => boolean): Promise<void>;
 }

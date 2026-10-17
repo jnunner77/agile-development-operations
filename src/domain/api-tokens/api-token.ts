@@ -118,8 +118,22 @@ export class ApiToken {
     return token;
   }
 
+  /** Rebuild from storage. Throws on corrupt data, so a damaged token can never be used or live forever. */
   static reconstitute(stored: StoredApiToken): ApiToken {
-    if (!stored.id || !stored.hash || !isScope(stored.scope)) throw new Error(`Stored API token ${stored.id} is invalid`);
+    const text = (v: unknown) => typeof v === 'string' && v.length > 0;
+    const date = (v: unknown) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
+    const valid =
+      text(stored.id) &&
+      text(stored.hash) &&
+      text(stored.memberId) &&
+      typeof stored.name === 'string' &&
+      typeof stored.prefix === 'string' &&
+      typeof stored.createdBy === 'string' &&
+      isScope(stored.scope) &&
+      date(stored.createdAt) &&
+      date(stored.expiresAt) &&
+      (stored.lastUsedAt === null || date(stored.lastUsedAt));
+    if (!valid) throw new Error(`Stored API token ${String(stored.id)} is invalid`);
     return new ApiToken({ ...stored });
   }
 

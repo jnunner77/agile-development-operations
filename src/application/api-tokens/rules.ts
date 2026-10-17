@@ -7,5 +7,6 @@ export const managesAllTokens = (caller: Caller): boolean => caller.admin === 'g
 /** Tokens that expired long ago are no longer listed or kept. */
 export async function forgetStaleTokens(deps: Pick<SignInDeps, 'apiTokens' | 'clock'>): Promise<void> {
   const now = deps.clock.now();
-  for (const token of await deps.apiTokens.all()) if (token.isStale(now)) await deps.apiTokens.delete(token.id);
+  const stale = (await deps.apiTokens.all()).filter((t) => t.isStale(now)).map((t) => t.id);
+  if (stale.length) await deps.apiTokens.deleteMany(stale);
 }

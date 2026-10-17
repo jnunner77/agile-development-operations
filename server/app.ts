@@ -3,7 +3,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { z, ZodError } from 'zod';
 import { HttpError, badRequest } from './errors.ts';
-import { adminAccessOf, mayModerateCommentsOf } from '#application/access.ts';
+import { adminAccessOf, mayModerateCommentsOf, requireAdmin } from '#application/access.ts';
+import { httpFailure } from '#presentation/http/errors.ts';
 import type { Caller } from '#application/caller.ts';
 import { MissingRecordError, RejectedChangeError, type Store, type Tx } from '#infrastructure/json-store/store.ts';
 import type { RequestContext } from '#presentation/http/context.ts';
@@ -65,8 +66,8 @@ function userName(store: Store, req: Request): string {
  * The member making the request: the signed-in one or the API token's, else the one X-User names
  * (by id, or by a name only one member has).
  */
-function callerId(store: Store, req: Request, res: Response): string | null {
-  const member = identityOf(res).identity.member;
+function callerId(store: Store, req: Request, identity: RequestIdentity): string | null {
+  const member = identity.identity.member;
   if (member) return member.id;
   const raw = req.header('x-user');
   if (!raw) return null;
@@ -89,12 +90,6 @@ const intParam = (value: string | string[] | undefined) => {
 
 const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
 
-/** Who the request comes from, as worked out by the identify middleware. */
-function identityOf(res: Response): RequestIdentity {
-  const found = res.locals.identity as RequestIdentity | undefined;
-  if (!found) throw new Error('The caller was not identified before this route');
-  return found;
-}
 
 /**
  * The Express server for everything not yet moved into the layers. It handles security, sign-in
@@ -137,11 +132,19 @@ export function createExpressApp({
 
   const api = express.Router();
 
+  /** Who each request comes from, worked out once by `identify`. */
+  const identities = new WeakMap<Request, RequestIdentity>();
+  const identityOf = (req: Request): RequestIdentity => {
+    const found = identities.get(req);
+    if (!found) throw new Error('The caller was not identified before this route');
+    return found;
+  };
+
   /** Identify the caller once per request; the sign-in rules live in the layers. */
   const identify = (req: Request, res: Response, next: NextFunction) => {
-    if (res.locals.identity) return next();
+    if (identities.has(req)) return next();
     signIn.authenticator.identify(req).then((found) => {
-      res.locals.identity = found;
+      identities.set(req, found);
       // Read by the rate limits and the abuse checks.
       res.locals.authMember = found.identity.member;
       res.locals.invalidToken = found.identity.invalidToken;
@@ -149,11 +152,13 @@ export function createExpressApp({
     }, next);
   };
 
-  /** Restrict a route to administrators while sign-in is on; API tokens never. */
-  const admin = (_req: Request, res: Response, next: NextFunction) => {
-    const access = adminAccessOf(identityOf(res).identity);
-    if (access === 'token') throw new HttpError(403, "API tokens can't be used to administer the project");
-    if (access === 'not-admin') throw new HttpError(403, 'Only administrators can do this');
+  /** Restrict a route to administrators while sign-in is on; API tokens never. Same rule as the layers. */
+  const admin = (req: Request, _res: Response, next: NextFunction) => {
+    const access = requireAdmin(callerOf(req));
+    if (!access.ok) {
+      const failure = httpFailure(access.error);
+      throw new HttpError(failure.status, failure.message);
+    }
     next();
   };
   const pass = (_req: Request, _res: Response, next: NextFunction) => next();
@@ -183,7 +188,7 @@ export function createExpressApp({
   // With sign-in on, everything below needs a valid session (or an API token).
   api.use(identify);
   api.use((req, res, next) => {
-    const decision = gate(identityOf(res).identity, req.method, req.path);
+    const decision = gate(identityOf(req).identity, req.method, req.path);
     if (decision.kind === 'reject') return res.status(decision.status).json(decision.body);
     // History and comments are attributed to who actually made the change.
     if (decision.actAs === null) delete req.headers['x-user'];
@@ -203,22 +208,23 @@ export function createExpressApp({
    * With sign-in on, or for an API token, only a comment's author or an administrator (never a
    * token) may change it. With sign-in off anyone may, as with everything else.
    */
-  const callerOf = (req: Request, res: Response): Caller => {
-    const { identity } = identityOf(res);
+  function callerOf(req: Request): Caller {
+    const found = identityOf(req);
+    const { identity } = found;
     return {
       name: userName(store, req),
-      memberId: callerId(store, req, res),
+      memberId: callerId(store, req, found),
       mayModerateComments: mayModerateCommentsOf(identity),
       admin: adminAccessOf(identity),
       origin: req.header('x-client-id'),
     };
-  };
+  }
 
   // Sign-in and API tokens, work items, links, the recycle bin, sprints, capacity, team members
   // and project settings.
   api.use((req, res, next) => {
     if (!layered.owns(req.method, req.path)) return next();
-    requests.set(req, { caller: callerOf(req, res), identity: identityOf(res), secure: req.secure });
+    requests.set(req, { caller: callerOf(req), identity: identityOf(req), secure: req.secure });
     layered.handle(req, res).then((handled) => {
       if (!handled) next();
     }, next);
@@ -239,7 +245,7 @@ export function createExpressApp({
     });
     res.write(`event: hello\ndata: ${JSON.stringify({ version: store.db.version })}\n\n`);
     // Stop streaming once the session times out, the user is signed out, or sign-in is turned on.
-    const { identity, sessionToken } = identityOf(res);
+    const { identity, sessionToken } = identityOf(req);
     const token = identity.via === 'session' ? sessionToken : undefined;
     let stopped = false;
     const stop = () => {

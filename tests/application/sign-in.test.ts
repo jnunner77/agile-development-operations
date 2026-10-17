@@ -202,6 +202,14 @@ describe('API tokens', () => {
     assert.deepEqual(await new ListApiTokens(t.deps).execute({ caller: admin }), []);
   });
 
+  it('record the caller’s member as creator, never a name the browser made up', async () => {
+    const t = await signedInTeam();
+    const created = unwrap(await new CreateApiToken(t.deps).execute({ caller: { ...admin, name: 'Totally The Admin' }, name: 'x' }));
+    assert.equal(created.info.createdBy, 'Ann');
+    const anonymous = unwrap(await new CreateApiToken(t.deps).execute({ caller: { ...admin, name: 'Someone', memberId: null }, name: 'y', memberId: 'm1' }));
+    assert.equal(anonymous.info.createdBy, 'Anonymous');
+  });
+
   it('can only be created for active members', async () => {
     const t = await signedInTeam();
     unwrap(await new UpdateMember(t.deps).execute({ caller: admin, id: 'm2', active: false }));

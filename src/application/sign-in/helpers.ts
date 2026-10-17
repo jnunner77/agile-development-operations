@@ -40,9 +40,7 @@ export async function adminView(deps: Pick<SignInDeps, 'team' | 'accounts' | 'fa
 /** Count a failed attempt against a username, forgetting old records of other usernames. */
 export async function recordFailure(deps: Pick<SignInDeps, 'failedAttempts' | 'clock'>, key: string): Promise<void> {
   const now = deps.clock.now();
-  for (const [other, record] of await deps.failedAttempts.all()) {
-    if (isForgotten(record, now)) await deps.failedAttempts.delete(other);
-  }
+  await deps.failedAttempts.sweep(now, (record) => isForgotten(record, now));
   await deps.failedAttempts.save(key, afterFailure(await deps.failedAttempts.find(key), now));
 }
 
@@ -69,16 +67,11 @@ export async function endSessions(deps: Pick<SignInDeps, 'sessions'>, memberId: 
   for (const s of await deps.sessions.forMember(memberId)) await deps.sessions.delete(s.token);
 }
 
-/** Revoke every API token that acts as the member. */
+/** Revoke every API token that acts as the member, in one write that no damaged token can stop. */
 export async function revokeTokens(deps: Pick<SignInDeps, 'apiTokens' | 'clock' | 'events'>, memberId: string): Promise<void> {
-  const now = deps.clock.now();
-  for (const token of await deps.apiTokens.all()) {
-    if (token.memberId !== memberId) continue;
-    token.revoke(now);
-    await deps.apiTokens.delete(token.id);
-    const events = token.pullEvents();
-    if (events.length) await deps.events.publish(events);
-  }
+  const ids = await deps.apiTokens.deleteForMember(memberId);
+  const occurredAt = deps.clock.now();
+  if (ids.length) await deps.events.publish(ids.map((tokenId) => ({ type: 'ApiTokenRevoked', tokenId, memberId, occurredAt })));
 }
 
 /**
@@ -105,7 +98,7 @@ export async function memberForSession(
     await deps.sessions.delete(token);
     return null;
   }
-  if (touch) await deps.sessions.save({ ...session, lastSeen: now.getTime() });
+  if (touch) await deps.sessions.touch(token, now.getTime());
   return member;
 }
 

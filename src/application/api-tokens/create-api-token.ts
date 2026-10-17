@@ -32,15 +32,20 @@ export class CreateApiToken {
     const member = await findTeamMember(deps, memberId);
     if (!member.ok) return member;
     if (!member.value.active) return err({ code: 'TOKEN_MEMBER_INACTIVE', name: member.value.name });
-    await forgetStaleTokens(deps);
-    const now = deps.clock.now();
-    const limit = checkTokenLimit(await deps.apiTokens.all(), member.value, now);
-    if (!limit.ok) return limit;
-
+    // Recorded as created by the caller's member, never by whatever name a browser sent.
+    const creator = input.caller.memberId ? ((await deps.team.findById(input.caller.memberId))?.name ?? 'Anonymous') : 'Anonymous';
     const secret = deps.secrets.newApiToken();
-    const token = ApiToken.create(draft.value, { id: deps.ids.next(), memberId, secret, digest: deps.secrets.digest(secret), createdBy: input.caller.name, now });
-    await deps.apiTokens.save(token);
-    await publish(deps, token);
-    return ok({ token: secret, info: token.toInfo(now) });
+    const created = await deps.signInWrites.run(async (): Promise<Result<ApiToken, ApiTokensError>> => {
+      await forgetStaleTokens(deps);
+      const now = deps.clock.now();
+      const limit = checkTokenLimit(await deps.apiTokens.all(), member.value, now);
+      if (!limit.ok) return limit;
+      const token = ApiToken.create(draft.value, { id: deps.ids.next(), memberId, secret, digest: deps.secrets.digest(secret), createdBy: creator, now });
+      await deps.apiTokens.save(token);
+      return ok(token);
+    });
+    if (!created.ok) return created;
+    await publish(deps, created.value);
+    return ok({ token: secret, info: created.value.toInfo(deps.clock.now()) });
   }
 }

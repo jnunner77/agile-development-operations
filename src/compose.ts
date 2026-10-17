@@ -63,6 +63,7 @@ import { StoreUnitOfWork } from '#infrastructure/json-store/unit-of-work.ts';
 import { JsonWorkItemRepository } from '#infrastructure/json-store/work-item-repository.ts';
 import { LocalEventBus } from '#infrastructure/local-event-bus.ts';
 import { RandomIds } from '#infrastructure/random-ids.ts';
+import { SerialQueue } from '#infrastructure/serial-writes.ts';
 import { FunctionClock, SystemClock } from '#infrastructure/system-clock.ts';
 import { combineRoutes, type Router } from '#presentation/http/router.ts';
 import { teamRoutes } from '#presentation/team/routes.ts';
@@ -78,7 +79,7 @@ export interface AuthOptions {
 
 /** Sign-in for one data directory: its adapters, and what the rest of the app reads from it. */
 export interface Auth {
-  readonly deps: Pick<SignInDeps, 'accounts' | 'signInSettings' | 'sessions' | 'failedAttempts' | 'apiTokens' | 'hasher' | 'secrets' | 'signInForcedOff'> & {
+  readonly deps: Pick<SignInDeps, 'accounts' | 'signInSettings' | 'sessions' | 'failedAttempts' | 'apiTokens' | 'hasher' | 'secrets' | 'signInWrites' | 'signInForcedOff'> & {
     readonly clock: Clock;
   };
   /** Sign-in is on and not forced off. */
@@ -103,6 +104,7 @@ export function createAuth(store: Store, options: AuthOptions = {}): Auth {
       apiTokens: new FileApiTokenRepository(store.dataDir, now),
       hasher: new ScryptHasher(),
       secrets: new RandomSecrets(),
+      signInWrites: new SerialQueue(),
       signInForcedOff: forcedOff,
       clock: new FunctionClock(now),
     },

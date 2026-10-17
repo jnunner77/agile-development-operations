@@ -13,6 +13,8 @@ import { guardUsableAdmin } from '#infrastructure/sign-in/admin-guard.ts';
 import { AuthFile, FileAccountRepository, FileSignInSettingsRepository } from '#infrastructure/sign-in/auth-file.ts';
 import { RandomSecrets } from '#infrastructure/sign-in/random-secrets.ts';
 import { ScryptHasher } from '#infrastructure/sign-in/scrypt-hasher.ts';
+import { MemoryFailedAttemptsRepository, MemorySessionRepository } from '#infrastructure/sign-in/memory-sessions.ts';
+import { SerialQueue } from '#infrastructure/serial-writes.ts';
 
 const NOW = new Date('2026-03-02T10:00:00.000Z');
 let dir: string;
@@ -136,5 +138,73 @@ describe('keeping an administrator', () => {
     assert.doesNotThrow(() => forced.replace(emptyDatabase()));
     assert.deepEqual((await new StoreTeamDirectory(store).all()).map((m) => m.id), ['m1']);
     assert.equal(await new StoreTeamDirectory(store).findById('nope'), undefined);
+  });
+});
+
+describe('review hardening', () => {
+  it('never brings back a session that ended while a request was using it', async () => {
+    const sessions = new MemorySessionRepository();
+    await sessions.save({ token: 't', memberId: 'm1', createdAt: 0, lastSeen: 0 });
+    await sessions.delete('t');
+    await sessions.touch('t', 5);
+    assert.equal(await sessions.find('t'), undefined);
+  });
+
+  it('sweeps old failure records at most once a minute', async () => {
+    const failures = new MemoryFailedAttemptsRepository();
+    await failures.save('a', { count: 1, lockedUntil: 0, last: 0 });
+    await failures.sweep(NOW, () => true);
+    assert.equal(failures.size, 0);
+    await failures.save('b', { count: 1, lockedUntil: 0, last: 0 });
+    await failures.sweep(new Date(NOW.getTime() + 1000), () => true);
+    assert.equal(failures.size, 1);
+    await failures.sweep(new Date(NOW.getTime() + 61_000), () => true);
+    assert.equal(failures.size, 0);
+  });
+
+  it('revokes a member’s tokens even when one is too damaged to read', async () => {
+    fs.writeFileSync(
+      path.join(dir, 'api-tokens.json'),
+      JSON.stringify({ tokens: [{ id: 'bad', memberId: 'm1', hash: 'h', scope: 'admin' }, { id: 'other', memberId: 'm2', hash: 'h2', scope: 'read' }] }),
+    );
+    const repo = new FileApiTokenRepository(dir);
+    await assert.rejects(repo.all(), /invalid/);
+    assert.deepEqual(await repo.deleteForMember('m1'), ['bad']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'api-tokens.json'), 'utf8')).tokens.map((t: { id: string }) => t.id), ['other']);
+  });
+
+  it('refuses a token that could never expire', () => {
+    const draft = ApiTokenDraft.of({ name: 'x' });
+    assert.ok(draft.ok);
+    const stored = ApiToken.create(draft.value, { id: 't', memberId: 'm1', secret: 'boards_xxxxxxxxxx', digest: 'd', createdBy: 'Ann', now: NOW }).toSnapshot();
+    assert.throws(() => ApiToken.reconstitute({ ...stored, expiresAt: 'never' }), /invalid/);
+  });
+
+  it('refuses to start on a damaged auth.json rather than guess', () => {
+    const write = (data: unknown) => fs.writeFileSync(path.join(dir, 'auth.json'), JSON.stringify(data));
+    write({ settings: { enabled: 'false' } });
+    assert.throws(() => new AuthFile(dir), /auth.json is damaged \(settings.enabled\)/);
+    write({ accounts: { m1: { isAdmin: 'no' } } });
+    assert.throws(() => new AuthFile(dir), /account m1/);
+    write({ accounts: { m1: { isAdmin: true } } });
+    assert.equal(new AuthFile(dir).account('m1').isAdmin, true);
+  });
+
+  it('runs serial writes one at a time, in order, past failures', async () => {
+    const queue = new SerialQueue();
+    const order: string[] = [];
+    const slow = queue.run(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      order.push('slow');
+    });
+    const failing = queue.run(async () => {
+      order.push('failing');
+      throw new Error('boom');
+    });
+    const fast = queue.run(async () => {
+      order.push('fast');
+    });
+    await Promise.allSettled([slow, failing, fast]);
+    assert.deepEqual(order, ['slow', 'failing', 'fast']);
   });
 });

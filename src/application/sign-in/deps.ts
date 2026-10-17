@@ -8,7 +8,7 @@ import type { AppDeps } from '../deps.ts';
 
 export type SignInDeps = Pick<
   AppDeps,
-  'accounts' | 'signInSettings' | 'sessions' | 'failedAttempts' | 'apiTokens' | 'team' | 'hasher' | 'secrets' | 'clock' | 'ids' | 'events' | 'signInForcedOff'
+  'accounts' | 'signInSettings' | 'sessions' | 'failedAttempts' | 'apiTokens' | 'team' | 'hasher' | 'secrets' | 'signInWrites' | 'clock' | 'ids' | 'events' | 'signInForcedOff'
 >;
 
 export type SignInError =

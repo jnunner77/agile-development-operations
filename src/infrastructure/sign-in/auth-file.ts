@@ -14,6 +14,31 @@ interface AuthFileData {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** Refuse to start on a damaged auth.json rather than guess: "enabled": "false" must never mean on. */
+function corrupt(what: string): never {
+  throw new Error(`auth.json is damaged (${what}). Fix or restore it before starting the server.`);
+}
+
+function readSettings(raw: unknown): SignInSettingsData {
+  if (raw === undefined) return { ...DEFAULT_SIGN_IN_SETTINGS };
+  if (!isRecord(raw)) return corrupt('settings');
+  const { enabled = DEFAULT_SIGN_IN_SETTINGS.enabled, passwordExpiryDays = DEFAULT_SIGN_IN_SETTINGS.passwordExpiryDays, sessionTimeoutMinutes = DEFAULT_SIGN_IN_SETTINGS.sessionTimeoutMinutes } = raw;
+  if (typeof enabled !== 'boolean') return corrupt('settings.enabled');
+  if (typeof passwordExpiryDays !== 'number') return corrupt('settings.passwordExpiryDays');
+  if (typeof sessionTimeoutMinutes !== 'number') return corrupt('settings.sessionTimeoutMinutes');
+  return { enabled, passwordExpiryDays, sessionTimeoutMinutes };
+}
+
+function readAccount(memberId: string, raw: unknown): StoredAccount {
+  if (!isRecord(raw)) return corrupt(`account ${memberId}`);
+  const { isAdmin = false, passwordHash = null, passwordSetAt = null, mustChange = false } = raw;
+  const textOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
+  if (typeof isAdmin !== 'boolean' || typeof mustChange !== 'boolean' || !textOrNull(passwordHash) || !textOrNull(passwordSetAt)) {
+    return corrupt(`account ${memberId}`);
+  }
+  return { isAdmin, passwordHash, passwordSetAt, mustChange };
+}
+
 /**
  * Sign-in settings and accounts, in auth.json in the data directory. It holds password hashes, so
  * it is kept apart from db.json and never reaches browsers, snapshots or exports. Loaded once and
@@ -26,10 +51,14 @@ export class AuthFile {
   constructor(dataDir: string) {
     this.#file = path.join(dataDir, 'auth.json');
     const raw = readJsonFile(this.#file);
-    const settings = isRecord(raw) && isRecord(raw['settings']) ? raw['settings'] : {};
-    const accounts = isRecord(raw) && isRecord(raw['accounts']) ? raw['accounts'] : {};
-    // Shapes are checked as accounts are read; the file is only ever written by this class.
-    this.#data = { settings: { ...DEFAULT_SIGN_IN_SETTINGS, ...(settings as Partial<SignInSettingsData>) }, accounts: accounts as Record<string, StoredAccount> };
+    if (raw !== undefined && !isRecord(raw)) corrupt('not an object');
+    const file = isRecord(raw) ? raw : {};
+    const accounts = file['accounts'] ?? {};
+    if (!isRecord(accounts)) corrupt('accounts');
+    this.#data = {
+      settings: readSettings(file['settings']),
+      accounts: Object.fromEntries(Object.entries(accounts).map(([memberId, account]) => [memberId, readAccount(memberId, account)])),
+    };
   }
 
   /** The stored settings, synchronously (for guards and per-request checks). */

@@ -22,14 +22,23 @@ export class MemorySessionRepository implements SessionRepository {
     this.#sessions.set(session.token, { ...session });
   }
 
+  async touch(token: string, lastSeen: number): Promise<void> {
+    const session = this.#sessions.get(token);
+    if (session) this.#sessions.set(token, { ...session, lastSeen });
+  }
+
   async delete(token: string): Promise<void> {
     this.#sessions.delete(token);
   }
 }
 
+/** Records are swept at most this often. */
+const SWEEP_EVERY_MS = 60_000;
+
 /** Failed sign-ins, in memory: a restart forgets them. */
 export class MemoryFailedAttemptsRepository implements FailedAttemptsRepository {
   readonly #records = new Map<string, FailedAttempts>();
+  #lastSweep = 0;
 
   /** How many usernames have failure records (for tests and diagnostics). */
   get size(): number {
@@ -50,5 +59,11 @@ export class MemoryFailedAttemptsRepository implements FailedAttemptsRepository 
 
   async delete(key: string): Promise<void> {
     this.#records.delete(key);
+  }
+
+  async sweep(now: Date, forgotten: (record: FailedAttempts) => boolean): Promise<void> {
+    if (now.getTime() - this.#lastSweep < SWEEP_EVERY_MS) return;
+    this.#lastSweep = now.getTime();
+    for (const [key, record] of this.#records) if (forgotten(record)) this.#records.delete(key);
   }
 }

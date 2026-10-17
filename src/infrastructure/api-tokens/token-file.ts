@@ -63,9 +63,21 @@ export class FileApiTokenRepository implements ApiTokenRepository {
   }
 
   async delete(id: string): Promise<void> {
-    if (!this.#tokens.some((t) => t.id === id)) return;
-    this.#lastUseWrite.delete(id);
-    this.#write(this.#tokens.filter((t) => t.id !== id));
+    await this.deleteMany([id]);
+  }
+
+  async deleteMany(ids: readonly string[]): Promise<void> {
+    const gone = new Set(ids);
+    if (!this.#tokens.some((t) => gone.has(t.id))) return;
+    for (const id of gone) this.#lastUseWrite.delete(id);
+    this.#write(this.#tokens.filter((t) => !gone.has(t.id)));
+  }
+
+  async deleteForMember(memberId: string): Promise<string[]> {
+    // Matched on the raw rows: a token too damaged to read must still be revoked.
+    const ids = this.#tokens.filter((t) => t.memberId === memberId).map((t) => t.id);
+    await this.deleteMany(ids);
+    return ids;
   }
 
   #write(next: StoredApiToken[]): void {

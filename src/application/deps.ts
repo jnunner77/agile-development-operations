@@ -6,7 +6,7 @@ import type { MemberRepository } from '#domain/team/repository.ts';
 import type { WorkItemRepository } from '#domain/work-items/repository.ts';
 import type { ApiTokenRepository } from '#domain/api-tokens/repository.ts';
 import type { AccountRepository, FailedAttemptsRepository, SessionRepository, SignInSettingsRepository } from '#domain/sign-in/repository.ts';
-import type { Clock, EventPublisher, IdGenerator, PasswordHasher, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
+import type { Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
 
 /** Everything the use cases can depend on. Each module takes the part it needs. */
 export interface AppDeps {
@@ -25,6 +25,8 @@ export interface AppDeps {
   readonly team: TeamDirectory;
   readonly hasher: PasswordHasher;
   readonly secrets: Secrets;
+  /** Account, settings and token changes run one at a time. */
+  readonly signInWrites: SerialWrites;
   /** Sign-in is forced off (AUTH_DISABLED), whatever its settings say: recovery if every admin is locked out. */
   readonly signInForcedOff: boolean;
   readonly clock: Clock;
