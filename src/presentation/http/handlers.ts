@@ -15,6 +15,12 @@ export function fail(res: ServerResponse, error: AppError): void {
   sendError(res, failure.status, failure.message);
 }
 
+/** Answer with the value itself, or with the error's status and message. */
+export function respond<T, E extends AppError>(res: ServerResponse, result: Result<T, E>, status = 200): void {
+  if (result.ok) sendJson(res, status, result.value);
+  else fail(res, result.error);
+}
+
 /** Answer with `{ delta, result }`, or with the error's status and message. */
 export async function reply<T, E extends AppError>(res: ServerResponse, pending: Promise<Result<Committed<T>, E>>, status: number): Promise<void> {
   const result = await pending;

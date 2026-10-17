@@ -35,11 +35,27 @@ export interface UnitOfWork {
   run<T, E>(meta: ChangeMeta, work: () => Promise<Result<T, E>>): Promise<Result<Committed<T>, E>>;
 }
 
+/** One-way password hashing, deliberately slow. */
+export interface PasswordHasher {
+  hash(password: string): Promise<string>;
+  verify(password: string, stored: string): Promise<boolean>;
+  /** Take as long as `verify` does, for a username that doesn't exist, so timing gives nothing away. */
+  verifyNothing(password: string): Promise<void>;
+}
+
+/** Unguessable secrets, and the digest kept in their place. */
+export interface Secrets {
+  newSessionToken(): string;
+  /** A new API token secret, starting with the API token prefix. */
+  newApiToken(): string;
+  digest(secret: string): string;
+}
+
 /**
- * With sign-in on, at least one administrator who can actually sign in must remain. Who is an
- * administrator is part of sign-in, which hasn't moved into the layers yet; this port asks it.
+ * The team as last saved, for reading outside a unit of work (sign-in runs on every request and
+ * changes nothing in the project).
  */
-export interface AdminSafeguard {
-  /** Whether a team made of `members` would still have an administrator who can sign in. */
-  keepsUsableAdmin(members: readonly Member[]): Promise<boolean>;
+export interface TeamDirectory {
+  all(): Promise<Member[]>;
+  findById(id: string): Promise<Member | undefined>;
 }

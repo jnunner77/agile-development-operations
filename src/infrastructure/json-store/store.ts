@@ -4,6 +4,9 @@ import type { Database, Delta } from '#application/contracts/database.ts';
 import { err, ok, type Result } from '#shared/result.ts';
 import { emptyDatabase, normalizeDatabase } from './schema.ts';
 
+/** A store guard refused a change; the HTTP layer answers 400 with the message. */
+export class RejectedChangeError extends Error {}
+
 /** A record a mutation looked up doesn't exist. The HTTP layer answers 404 "<what> not found". */
 export class MissingRecordError extends Error {
   readonly what: string;

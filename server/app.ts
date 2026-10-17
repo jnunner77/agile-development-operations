@@ -3,29 +3,36 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { z, ZodError } from 'zod';
 import { HttpError, badRequest } from './errors.ts';
+import { adminAccessOf, mayModerateCommentsOf } from '#application/access.ts';
 import type { Caller } from '#application/caller.ts';
-import type { Member } from '#domain/types.ts';
-import { MissingRecordError, type Store, type Tx } from '#infrastructure/json-store/store.ts';
-import type { CallerResolver } from '#presentation/http/caller.ts';
+import { MissingRecordError, RejectedChangeError, type Store, type Tx } from '#infrastructure/json-store/store.ts';
+import type { RequestContext } from '#presentation/http/context.ts';
 import type { Router } from '#presentation/http/router.ts';
+import type { Authenticator, RequestIdentity } from '#presentation/sign-in/authenticator.ts';
+import { gate } from '#presentation/sign-in/gate.ts';
 import type { SnapshotManager } from './snapshots.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { buildDemoDatabase } from './seed.ts';
-import { AuthManager } from './auth.ts';
 import { Security, retryAfterOf, securityHeaders } from './security.ts';
 import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github.ts';
 
 /** Routes served by the layered code (src/), relative to /api. */
 export type LayeredRoutes = Pick<Router, 'handle' | 'owns'>;
 
+/** What the Express pipeline needs from sign-in, which lives in the layers. */
+export interface SignInGlue {
+  readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn'>;
+  /** Whether sign-in is on now, for the per-request rate limits. */
+  readonly enabled: boolean;
+}
+
 export interface AppOptions {
   store: Store;
-  /** Builds the layered routes, given how to tell who is calling. */
-  layeredRoutes: (identify: CallerResolver) => LayeredRoutes;
+  /** Builds the layered routes, given what the pipeline knows about each request. */
+  layeredRoutes: (context: RequestContext) => LayeredRoutes;
+  signIn: SignInGlue;
   snapshots: SnapshotManager;
   staticDir?: string;
-  /** Sign-in handling; one is created (sign-in off until turned on in settings) if omitted. */
-  auth?: AuthManager;
   /**
    * Express "trust proxy" setting. Set it when running behind a reverse proxy (e.g. Caddy)
    * so the app sees the original HTTPS scheme and marks sign-in cookies as Secure.
@@ -59,7 +66,7 @@ function userName(store: Store, req: Request): string {
  * (by id, or by a name only one member has).
  */
 function callerId(store: Store, req: Request, res: Response): string | null {
-  const member = res.locals.authMember as Member | null | undefined;
+  const member = identityOf(res).identity.member;
   if (member) return member.id;
   const raw = req.header('x-user');
   if (!raw) return null;
@@ -82,6 +89,13 @@ const intParam = (value: string | string[] | undefined) => {
 
 const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
 
+/** Who the request comes from, as worked out by the identify middleware. */
+function identityOf(res: Response): RequestIdentity {
+  const found = res.locals.identity as RequestIdentity | undefined;
+  if (!found) throw new Error('The caller was not identified before this route');
+  return found;
+}
+
 /**
  * The Express server for everything not yet moved into the layers. It handles security, sign-in
  * and tokens for every request, then hands requests for the moved slices to the layered routes.
@@ -89,16 +103,25 @@ const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateCommen
 export function createExpressApp({
   store,
   layeredRoutes,
+  signIn,
   snapshots,
   staticDir,
-  auth = new AuthManager(store),
   trustProxy,
   security = new Security(),
   github = new GitHubIntegration(store),
 }: AppOptions) {
   // Who is calling is worked out by the middleware below and handed to the layered routes.
-  const callers = new WeakMap<object, Caller>();
-  const layered = layeredRoutes((req) => callers.get(req) ?? ANONYMOUS);
+  const requests = new WeakMap<object, { caller: Caller; identity: RequestIdentity; secure: boolean }>();
+  const known = (req: object) => {
+    const found = requests.get(req);
+    if (!found) throw new Error('A layered route ran before the caller was identified');
+    return found;
+  };
+  const layered = layeredRoutes({
+    caller: (req) => requests.get(req)?.caller ?? ANONYMOUS,
+    identity: (req) => known(req).identity,
+    secure: (req) => known(req).secure,
+  });
   const ownedByLayers = (req: Request) => req.path.toLowerCase().startsWith('/api/') && layered.owns(req.method, req.path.slice(4));
 
   const app = express();
@@ -113,7 +136,26 @@ export function createExpressApp({
   app.use((req, res, next) => (ownBodyParser.has(req.path) || ownedByLayers(req) ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
-  const admin = auth.requireAdmin;
+
+  /** Identify the caller once per request; the sign-in rules live in the layers. */
+  const identify = (req: Request, res: Response, next: NextFunction) => {
+    if (res.locals.identity) return next();
+    signIn.authenticator.identify(req).then((found) => {
+      res.locals.identity = found;
+      // Read by the rate limits and the abuse checks.
+      res.locals.authMember = found.identity.member;
+      res.locals.invalidToken = found.identity.invalidToken;
+      next();
+    }, next);
+  };
+
+  /** Restrict a route to administrators while sign-in is on; API tokens never. */
+  const admin = (_req: Request, res: Response, next: NextFunction) => {
+    const access = adminAccessOf(identityOf(res).identity);
+    if (access === 'token') throw new HttpError(403, "API tokens can't be used to administer the project");
+    if (access === 'not-admin') throw new HttpError(403, 'Only administrators can do this');
+    next();
+  };
   const pass = (_req: Request, _res: Response, next: NextFunction) => next();
   const heavy = security ? security.heavy : pass;
 
@@ -131,19 +173,23 @@ export function createExpressApp({
     api.use(security.sameOrigin);
     // Identify the caller first so limits apply per person, and to anonymous callers
     // before sign-in turns them away.
-    api.use((req, res, next) => {
-      auth.identify(req, res);
-      next();
-    });
-    api.use(security.apiLimits(() => auth.enabled));
+    api.use(identify);
+    api.use(security.apiLimits(() => signIn.enabled));
     api.use(['/auth/login', '/auth/password'], security.signIn);
   }
   // GitHub webhooks authenticate with a signature over the body, not a session.
   api.post('/integrations/github/webhook', github.precheck, GitHubIntegration.rawBody, github.webhook);
 
-  // With sign-in on, everything below needs a valid session.
-  api.use(auth.authenticate);
-  api.use('/auth', auth.routes());
+  // With sign-in on, everything below needs a valid session (or an API token).
+  api.use(identify);
+  api.use((req, res, next) => {
+    const decision = gate(identityOf(res).identity, req.method, req.path);
+    if (decision.kind === 'reject') return res.status(decision.status).json(decision.body);
+    // History and comments are attributed to who actually made the change.
+    if (decision.actAs === null) delete req.headers['x-user'];
+    else if (decision.actAs !== 'as-sent') req.headers['x-user'] = encodeURIComponent(decision.actAs);
+    next();
+  });
 
   /** Wrap a mutation: run it in a transaction and reply with the resulting delta. */
   const mutate =
@@ -158,21 +204,21 @@ export function createExpressApp({
    * token) may change it. With sign-in off anyone may, as with everything else.
    */
   const callerOf = (req: Request, res: Response): Caller => {
-    const token = !!res.locals.apiToken;
-    const restricted = auth.enabled || token;
+    const { identity } = identityOf(res);
     return {
       name: userName(store, req),
       memberId: callerId(store, req, res),
-      mayModerateComments: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)),
-      admin: auth.adminAccess(res),
+      mayModerateComments: mayModerateCommentsOf(identity),
+      admin: adminAccessOf(identity),
       origin: req.header('x-client-id'),
     };
   };
 
-  // Work items, links, the recycle bin, sprints, capacity, team members and project settings.
+  // Sign-in and API tokens, work items, links, the recycle bin, sprints, capacity, team members
+  // and project settings.
   api.use((req, res, next) => {
     if (!layered.owns(req.method, req.path)) return next();
-    callers.set(req, callerOf(req, res));
+    requests.set(req, { caller: callerOf(req, res), identity: identityOf(res), secure: req.secure });
     layered.handle(req, res).then((handled) => {
       if (!handled) next();
     }, next);
@@ -193,20 +239,33 @@ export function createExpressApp({
     });
     res.write(`event: hello\ndata: ${JSON.stringify({ version: store.db.version })}\n\n`);
     // Stop streaming once the session times out, the user is signed out, or sign-in is turned on.
-    const token = res.locals.authToken as string | undefined;
-    const allowed = () => !auth.enabled || (!!token && !!auth.resolve(token, false));
+    const { identity, sessionToken } = identityOf(res);
+    const token = identity.via === 'session' ? sessionToken : undefined;
+    let stopped = false;
     const stop = () => {
+      if (stopped) return;
+      stopped = true;
       clearInterval(heartbeat);
       unsubscribe();
       release();
       res.end();
     };
-    const unsubscribe = store.subscribe((delta, origin) => {
-      if (!allowed()) return stop();
-      res.write(`data: ${JSON.stringify({ delta, origin })}\n\n`);
-    });
-    const heartbeat = setInterval(() => (allowed() ? res.write(': ping\n\n') : stop()), 25_000);
+    // Checks are asynchronous; chaining them keeps the stream's messages in order.
+    let queue = Promise.resolve();
+    const send = (message: string) => {
+      queue = queue
+        .then(() => signIn.authenticator.stillSignedIn(token))
+        .then((allowed) => {
+          if (stopped) return;
+          if (allowed) res.write(message);
+          else stop();
+        })
+        .catch(() => stop());
+    };
+    const unsubscribe = store.subscribe((delta, origin) => send(`data: ${JSON.stringify({ delta, origin })}\n\n`));
+    const heartbeat = setInterval(() => send(': ping\n\n'), 25_000);
     req.on('close', () => {
+      stopped = true;
       clearInterval(heartbeat);
       unsubscribe();
       release();
@@ -306,6 +365,7 @@ export function createExpressApp({
       return res.status(400).json({ error: `${where}${issue?.message ?? 'Invalid request'}` });
     }
     if (err instanceof MissingRecordError) return res.status(404).json({ error: err.message });
+    if (err instanceof RejectedChangeError) return res.status(400).json({ error: err.message });
     if (err instanceof HttpError) {
       const retryAfter = retryAfterOf(err);
       if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
