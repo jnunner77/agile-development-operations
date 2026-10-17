@@ -1,8 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Database, Delta } from '../shared/types';
-import { notFound } from './errors';
-import { emptyDatabase, normalizeDatabase } from './schema';
+import type { Database, Delta } from '#application/contracts/database.ts';
+import { err, ok, type Result } from '#shared/result.ts';
+import { emptyDatabase, normalizeDatabase } from './schema.ts';
+
+/** A record a mutation looked up doesn't exist. The HTTP layer answers 404 "<what> not found". */
+export class MissingRecordError extends Error {
+  readonly what: string;
+
+  constructor(what: string) {
+    super(`${what} not found`);
+    this.what = what;
+  }
+}
 
 /**
  * Tracks which entities a mutation touched so the change can be sent to clients as
@@ -21,28 +31,30 @@ export class Tx {
   settings = false;
   recycleBin = false;
   readonly now = new Date().toISOString();
+  readonly db: Database;
+  /** Display name of the user making the change. */
+  readonly user: string;
 
-  constructor(
-    readonly db: Database,
-    /** Display name of the user making the change. */
-    readonly user: string,
-  ) {}
+  constructor(db: Database, user: string) {
+    this.db = db;
+    this.user = user;
+  }
 
   item(id: number) {
     const item = this.db.workItems.find((w) => w.id === id);
-    if (!item) throw notFound(`Work item ${id}`);
+    if (!item) throw new MissingRecordError(`Work item ${id}`);
     return item;
   }
 
   sprint(id: string) {
     const sprint = this.db.sprints.find((s) => s.id === id);
-    if (!sprint) throw notFound('Sprint');
+    if (!sprint) throw new MissingRecordError('Sprint');
     return sprint;
   }
 
   member(id: string) {
     const member = this.db.members.find((m) => m.id === id);
-    if (!member) throw notFound('Team member');
+    if (!member) throw new MissingRecordError('Team member');
     return member;
   }
 
@@ -78,14 +90,15 @@ export type DeltaListener = (delta: Delta, origin: string | undefined) => void;
 
 export class Store {
   db: Database;
+  readonly dataDir: string;
   private readonly file: string;
   private readonly listeners = new Set<DeltaListener>();
   private readonly guards: ((db: Database) => void)[] = [];
+  /** Asynchronous transactions run one at a time, in order. */
+  private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(
-    readonly dataDir: string,
-    init: () => Database = () => emptyDatabase(),
-  ) {
+  constructor(dataDir: string, init: () => Database = () => emptyDatabase()) {
+    this.dataDir = dataDir;
     fs.mkdirSync(dataDir, { recursive: true });
     this.file = path.join(dataDir, 'db.json');
     if (fs.existsSync(this.file)) {
@@ -132,9 +145,37 @@ export class Store {
    * untouched; otherwise the copy is committed, persisted and broadcast.
    */
   transact<T>(user: string, origin: string | undefined, fn: (tx: Tx) => T): { delta: Delta; result: T } {
-    const working = structuredClone(this.db);
-    const tx = new Tx(working, user);
+    const tx = new Tx(structuredClone(this.db), user);
     const result = fn(tx);
+    return { delta: this.commit(tx, origin), result };
+  }
+
+  /**
+   * Run asynchronous work against a working copy, one transaction at a time. The copy is
+   * committed, persisted and broadcast only if the work returns ok; on an error result or a
+   * throw the live database is left untouched.
+   */
+  transactAsync<T, E>(
+    user: string,
+    origin: string | undefined,
+    work: (tx: Tx) => Promise<Result<T, E>>,
+  ): Promise<Result<{ result: T; delta: Delta }, E>> {
+    const run = async (): Promise<Result<{ result: T; delta: Delta }, E>> => {
+      const base = this.db;
+      const tx = new Tx(structuredClone(base), user);
+      const result = await work(tx);
+      if (!result.ok) return err(result.error);
+      // A synchronous transaction slipping in between would be overwritten; refuse instead.
+      if (this.db !== base) throw new Error('The database changed while an asynchronous transaction was running');
+      return ok({ result: result.value, delta: this.commit(tx, origin) });
+    };
+    const next = this.queue.then(run, run);
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+
+  private commit(tx: Tx, origin: string | undefined): Delta {
+    const working = tx.db;
     if (tx.members.size || tx.deletedMembers.size) this.check(working);
     working.version = this.db.version + 1;
     // On disk first: if the write fails, the live database and browsers are left as they were.
@@ -142,7 +183,7 @@ export class Store {
     this.db = working;
     const delta = tx.toDelta();
     this.emit(delta, origin);
-    return { delta, result };
+    return delta;
   }
 
   /** Replace the entire database (restore / import / reset). */

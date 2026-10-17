@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatRange, isValidDate } from '../../../shared/dates';
-import type { WorkItemType } from '../../../shared/process';
-import type { DateRange, WorkItem } from '../../../shared/types';
+import { formatRange, isValidDate } from '#domain/dates.ts';
+import type { WorkItemType } from '#domain/process.ts';
+import type { DateRange, WorkItem } from '#domain/types.ts';
 import { useStore } from '../store';
 import { Avatar, StateBadge } from './common';
 import { Icon, TypeIcon } from './Icon';

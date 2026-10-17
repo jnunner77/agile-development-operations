@@ -1,5 +1,5 @@
-import type { WorkItemType } from '../../../shared/process';
-import { TYPE_DEFS } from '../../../shared/process';
+import type { WorkItemType } from '#domain/process.ts';
+import { TYPE_DEFS } from '#domain/process.ts';
 
 const PATHS: Record<string, string> = {
   add: 'M8 2v12M2 8h12',

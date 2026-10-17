@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StreamVersion, loadFresh } from '../client/src/lib/stream';
+import { StreamVersion, loadFresh } from '../../client/src/lib/stream.ts';
 
 describe('live-update stream version', () => {
   it('asks for a reload after a reconnect when others changed things while it was down', () => {

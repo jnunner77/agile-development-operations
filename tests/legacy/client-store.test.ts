@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyDelta, setDatabase, useStore } from '../client/src/store';
-import { blankWorkItem, emptyDatabase } from '../server/schema';
+import { applyDelta, setDatabase, useStore } from '../../client/src/store.ts';
+import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
 
 const item = (title: string) => blankWorkItem({ id: 1, type: 'Task', title });
 const title = () => useStore.getState().workItems.find((w) => w.id === 1)?.title;

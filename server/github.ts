@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { branchIds, mentionedIds } from '../shared/devlinks';
-import { TYPE_DEFS, stateCategory } from '../shared/process';
-import type { DevLink, WorkItem } from '../shared/types';
-import { DEFAULT_GITHUB_SETTINGS, type Delivery, type GitHubAdminView, type GitHubSettings } from '../shared/integrations';
-import { HttpError, notFound } from './errors';
-import type { Store, Tx } from './store';
-import { applyPatch } from './workitems';
+import { branchIds, mentionedIds } from '#domain/devlinks.ts';
+import { TYPE_DEFS, stateCategory } from '#domain/process.ts';
+import type { DevLink, WorkItem } from '#domain/types.ts';
+import { DEFAULT_GITHUB_SETTINGS, type Delivery, type GitHubAdminView, type GitHubSettings } from '#application/contracts/integrations.ts';
+import { HttpError, notFound } from './errors.ts';
+import type { Store, Tx } from '#infrastructure/json-store/store.ts';
+import { applyPatch } from './workitems.ts';
 
 // GitHub integration: GitHub sends webhook events (pushes, branches, pull requests, CI
 // results) to this app. Anything that mentions AB#123, or a branch named like wi/123-…,
@@ -65,7 +65,10 @@ export class GitHubIntegration {
   private readonly deliveries: Delivery[] = [];
   private readonly seen = new Set<string>();
 
-  constructor(private readonly store: Store) {
+  private readonly store: Store;
+
+  constructor(store: Store) {
+    this.store = store;
     this.file = path.join(store.dataDir, 'integrations.json');
     this.data = { github: { ...DEFAULT_GITHUB_SETTINGS, secret: null } };
     if (fs.existsSync(this.file)) {

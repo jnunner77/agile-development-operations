@@ -1,20 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "allowImportingTsExtensions": false,
-    "types": ["node", "vite/client"]
-  },
-  "include": ["shared", "server", "client/src", "tests", "vite.config.ts"]
+  // Builds and checks everything with `tsc -b`. Each layer in src/ is its own project and can
+  // only import the layers it lists in "references", so an import that points outward
+  // (domain -> infrastructure, say) fails the build. See CLAUDE.md.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": ".tsbuild/root", "types": ["node"] },
+  "files": ["src/main.ts", "src/compose.ts"],
+  "references": [
+    { "path": "src/shared" },
+    { "path": "src/domain" },
+    { "path": "src/application" },
+    { "path": "src/infrastructure" },
+    { "path": "src/presentation" },
+    { "path": "server" },
+    { "path": "tests" }
+  ]
 }

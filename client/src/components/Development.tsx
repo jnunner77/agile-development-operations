@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { branchNameFor, mentionFor } from '../../../shared/devlinks';
-import type { DevLink, WorkItem } from '../../../shared/types';
+import { branchNameFor, mentionFor } from '#domain/devlinks.ts';
+import type { DevLink, WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { timeAgo } from '../lib/format';
 import { toast } from '../store';

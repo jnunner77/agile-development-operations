@@ -1,4 +1,4 @@
-import type { WorkItem } from '../../../shared/types';
+import type { WorkItem } from '#domain/types.ts';
 
 export interface Filters {
   keyword: string;

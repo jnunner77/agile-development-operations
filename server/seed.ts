@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { addDays, dayOfWeek, todayLocal, workingDaysBetween } from '../shared/dates';
-import { stateDef, type WorkItemType } from '../shared/process';
-import type { Database, FieldChange, Member, Sprint, SprintCapacity, WorkItem } from '../shared/types';
-import { blankWorkItem, emptyDatabase } from './schema';
+import { addDays, dayOfWeek, todayLocal, workingDaysBetween } from '#domain/dates.ts';
+import { stateDef, type WorkItemType } from '#domain/process.ts';
+import type { Database } from '#application/contracts/database.ts';
+import type { FieldChange, Member, Sprint, SprintCapacity, WorkItem } from '#domain/types.ts';
+import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
 
 /**
  * Demo project used on first start so the boards have something to show. Dates are
  * relative to today and work item history is back-filled so burndown charts work.
  */
-export function buildDemoDatabase(today: string = todayLocal()): Database {
+export function buildDemoDatabase(today: string = todayLocal(new Date())): Database {
   const db = emptyDatabase({ projectName: 'Fabrikam', teamName: 'Fabrikam Team', areaPaths: ['Fabrikam', 'Fabrikam\\Web', 'Fabrikam\\Mobile', 'Fabrikam\\Platform'] });
 
   const members: Member[] = [

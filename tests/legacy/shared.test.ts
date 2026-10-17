@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { computeBurndown, fieldValueAt } from '../shared/burndown';
-import { addDays, countDaysOff, isValidDate, workingDaysBetween } from '../shared/dates';
-import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, suggestNextSprint } from '../shared/sprints';
-import type { Sprint, SprintCapacity, WorkItem } from '../shared/types';
-import { blankWorkItem } from '../server/schema';
+import { computeBurndown, fieldValueAt } from '#domain/burndown.ts';
+import { addDays, countDaysOff, isValidDate, workingDaysBetween } from '#domain/dates.ts';
+import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, suggestNextSprint } from '#domain/sprints.ts';
+import type { Sprint, SprintCapacity, WorkItem } from '#domain/types.ts';
+import { blankWorkItem } from '#infrastructure/json-store/schema.ts';
 
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const sprint: Sprint = { id: 's1', name: 'Sprint 1', startDate: '2026-01-05', finishDate: '2026-01-16', goal: '' };

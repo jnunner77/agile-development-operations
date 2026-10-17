@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { sortSprints } from '../../../shared/sprints';
-import { todayLocal } from '../../../shared/dates';
-import type { WorkItem } from '../../../shared/types';
+import { sortSprints } from '#domain/sprints.ts';
+import { todayLocal } from '#domain/dates.ts';
+import type { WorkItem } from '#domain/types.ts';
 import { useStore } from '../store';
 
 export function useItemsById() {
@@ -37,9 +37,9 @@ export function useMembersById() {
 
 /** Today's local date; refreshes after midnight. */
 export function useToday() {
-  const [today, setToday] = useState(todayLocal());
+  const [today, setToday] = useState(() => todayLocal(new Date()));
   useEffect(() => {
-    const t = setInterval(() => setToday(todayLocal()), 60_000);
+    const t = setInterval(() => setToday(todayLocal(new Date())), 60_000);
     return () => clearInterval(t);
   }, []);
   return today;

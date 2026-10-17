@@ -163,7 +163,8 @@ export function isClosed(type: WorkItemType, state: string): boolean {
 }
 
 export function defaultState(type: WorkItemType): string {
-  return TYPE_DEFS[type].states[0].name;
+  const [first] = TYPE_DEFS[type].states;
+  return first?.name ?? 'New';
 }
 
 export function levelForType(type: WorkItemType): BacklogLevel | undefined {

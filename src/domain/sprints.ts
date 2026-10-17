@@ -1,5 +1,5 @@
-import { addDays, countDaysOff, dayOfWeek, diffDays, workingDaysBetween } from './dates';
-import type { DateString, Sprint, SprintCapacity, WorkItem, Member } from './types';
+import { addDays, countDaysOff, dayOfWeek, diffDays, workingDaysBetween } from './dates.ts';
+import type { DateString, Sprint, SprintCapacity, WorkItem, Member } from './types.ts';
 
 export type SprintTimeframe = 'past' | 'current' | 'future' | 'unscheduled';
 
@@ -46,14 +46,14 @@ export function suggestNextSprint(sprints: Sprint[], today: DateString): Omit<Sp
   const last = dated[dated.length - 1];
   const nums = sprints.map((s) => Number(/(\d+)\s*$/.exec(s.name)?.[1] ?? 0));
   const nextNum = Math.max(0, ...nums) + 1;
-  if (!last) {
+  if (!last?.startDate || !last.finishDate) {
     // Start on the next Monday, two weeks long (Monday to the following Friday).
     const start = addDays(today, (8 - dayOfWeek(today)) % 7 || 7);
     return { name: `Sprint ${nextNum}`, startDate: start, finishDate: addDays(start, 11) };
   }
-  const length = diffDays(last.startDate!, last.finishDate!);
+  const length = diffDays(last.startDate, last.finishDate);
   // Friday finish -> Monday start is the common case; otherwise start the next day.
-  const start = addDays(last.finishDate!, dayOfWeek(last.finishDate!) === 5 ? 3 : 1);
+  const start = addDays(last.finishDate, dayOfWeek(last.finishDate) === 5 ? 3 : 1);
   return { name: `Sprint ${nextNum}`, startDate: start, finishDate: addDays(start, length) };
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import type { WorkItemType } from '../../../../shared/process';
-import type { Sprint, WorkItem } from '../../../../shared/types';
+import type { WorkItemType } from '#domain/process.ts';
+import type { Sprint, WorkItem } from '#domain/types.ts';
 import { api } from '../../api';
 import { EmptyState, Person, StateBadge, Tags, useMenu } from '../../components/common';
 import { Icon, TypeIcon } from '../../components/Icon';

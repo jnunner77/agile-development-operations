@@ -25,7 +25,7 @@ afterEach(() => {
 function backup() {
   // A permissive umask, like a typical login shell or cron job.
   return spawnSync('bash', ['-c', 'umask 022; exec deploy/backup.sh "$1"', 'backup', dest], {
-    cwd: path.resolve(import.meta.dirname, '..'),
+    cwd: path.resolve(import.meta.dirname, '../..'),
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     encoding: 'utf8',
   });

@@ -3,11 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../server/app';
-import { AuthManager } from '../server/auth';
-import { emptyDatabase } from '../server/schema';
-import { SnapshotManager } from '../server/snapshots';
-import { Store } from '../server/store';
+import { createApp } from '../../src/compose.ts';
+import { AuthManager } from '../../server/auth.ts';
+import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
+import { SnapshotManager } from '../../server/snapshots.ts';
+import { Store } from '#infrastructure/json-store/store.ts';
 
 const DAY = 86_400_000;
 

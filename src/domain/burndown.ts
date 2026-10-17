@@ -1,20 +1,21 @@
-import { eachDay, isWorkingDay } from './dates';
-import type { DateString, Sprint, WorkItem } from './types';
+import { eachDay, isWorkingDay } from './dates.ts';
+import type { DateString, Sprint, WorkItem } from './types.ts';
 
 /**
  * Reconstruct the value a field had at the end of a given timestamp by walking the
  * item's history backwards: the oldest change made after `at` tells us the value
- * before it; otherwise the current value is still in effect.
+ * before it; otherwise the current value is still in effect. History stores old values as
+ * plain data, so the result is `unknown` until the caller narrows it.
  */
-export function fieldValueAt<K extends keyof WorkItem>(item: WorkItem, field: K, at: string): WorkItem[K] {
+export function fieldValueAt(item: WorkItem, field: keyof WorkItem, at: string): unknown {
   let value: unknown = item[field];
   for (let i = item.history.length - 1; i >= 0; i--) {
     const entry = item.history[i];
-    if (entry.changedAt <= at) break;
+    if (!entry || entry.changedAt <= at) break;
     const change = entry.changes.find((c) => c.field === field);
     if (change) value = change.oldValue;
   }
-  return value as WorkItem[K];
+  return value;
 }
 
 export interface BurndownPoint {
@@ -34,7 +35,8 @@ export function computeBurndown(
 ): BurndownPoint[] {
   if (!sprint.startDate || !sprint.finishDate) return [];
   const days = eachDay(sprint.startDate, sprint.finishDate).filter((d) => isWorkingDay(d, workingDays));
-  if (days.length === 0) return [];
+  const [firstDay] = days;
+  if (firstDay === undefined) return [];
 
   const snapshot = (day: DateString) => {
     const at = `${day}T23:59:59.999Z`;
@@ -59,7 +61,7 @@ export function computeBurndown(
     return { remaining, totalEffort, completedEffort };
   };
 
-  const first = snapshot(days[0]);
+  const first = snapshot(firstDay);
   const start = first.remaining;
   return days.map((date, idx) => {
     const ideal = days.length === 1 ? 0 : start - (start * idx) / (days.length - 1);

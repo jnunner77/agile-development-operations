@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { blankWorkItem, emptyDatabase } from '../server/schema';
-import { Store } from '../server/store';
+import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
+import { Store } from '#infrastructure/json-store/store.ts';
 
 let dir: string;
 let store: Store;

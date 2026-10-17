@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { GitHubAdminView } from '../../../shared/integrations';
+import type { GitHubAdminView } from '#application/contracts/integrations.ts';
 import { githubApi } from '../api';
 import { confirmDialog } from '../components/common';
 import { Icon } from '../components/Icon';

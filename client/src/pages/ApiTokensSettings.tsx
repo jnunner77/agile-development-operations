@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ApiTokenInfo, ApiTokenScope } from '../../../shared/auth';
+import type { ApiTokenInfo, ApiTokenScope } from '#application/contracts/auth.ts';
 import { tokensApi } from '../api';
 import { Avatar, EmptyState, confirmDialog } from '../components/common';
 import { Icon } from '../components/Icon';

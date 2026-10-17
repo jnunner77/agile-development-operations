@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { MAX_MANUAL_SNAPSHOTS, type Database, type SnapshotKind, type SnapshotMeta } from '../shared/types';
-import { badRequest, notFound } from './errors';
-import { normalizeDatabase } from './schema';
-import type { Store } from './store';
+import { MAX_MANUAL_SNAPSHOTS, type Database, type SnapshotKind, type SnapshotMeta } from '#application/contracts/database.ts';
+import { badRequest, notFound } from './errors.ts';
+import { normalizeDatabase } from '#infrastructure/json-store/schema.ts';
+import type { Store } from '#infrastructure/json-store/store.ts';
 
 interface SnapshotFile {
   format: 'ado-clone-snapshot';
@@ -21,7 +21,10 @@ export class SnapshotManager {
   private readonly indexFile: string;
   private timer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly store: Store) {
+  private readonly store: Store;
+
+  constructor(store: Store) {
+    this.store = store;
     this.dir = path.join(store.dataDir, 'snapshots');
     this.indexFile = path.join(this.dir, 'index.json');
     fs.mkdirSync(this.dir, { recursive: true });
