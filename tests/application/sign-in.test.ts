@@ -66,6 +66,16 @@ describe('signing in', () => {
     assert.ok((await signIn.execute({ username: 'ann', password: 'correct horse' })).ok);
   });
 
+  it('counts simultaneous failed attempts without losing increments', async () => {
+    const t = await signedInTeam();
+    const signIn = new SignIn(t.deps);
+    await Promise.all(Array.from({ length: 5 }, () => signIn.execute({ username: 'ann', password: 'wrong' })));
+    assert.deepEqual(await signIn.execute({ username: 'ann', password: 'correct horse' }), {
+      ok: false,
+      error: { code: 'SIGN_IN_LOCKED', minutes: 5 },
+    });
+  });
+
   it('asks for a new password when it is temporary or expired, without a session', async () => {
     const t = await signedInTeam();
     unwrap(await new SetPassword(t.deps).execute({ caller: admin, memberId: 'm2', password: 'temporary1' }));
@@ -101,6 +111,39 @@ describe('changing a password', () => {
     assert.equal((await identify.execute({ sessionToken: old ?? '', touch: false })).member, null);
     assert.equal((await identify.execute({ sessionToken: changed.sessionToken, touch: false })).member?.id, 'm1');
   });
+
+  it('keeps password change and session issuance in one serialized operation', async () => {
+    const t = await signedInTeam();
+    let markSaveStarted: () => void = () => {};
+    let releaseSave: () => void = () => {};
+    const saveStarted = new Promise<void>((resolve) => (markSaveStarted = resolve));
+    const saveRelease = new Promise<void>((resolve) => (releaseSave = resolve));
+    const sessions = t.deps.sessions;
+    const save = sessions.save.bind(sessions);
+    let holdSave = true;
+    sessions.save = async (session) => {
+      await save(session);
+      if (holdSave) {
+        holdSave = false;
+        markSaveStarted();
+        await saveRelease;
+      }
+    };
+
+    const changing = new ChangePassword(t.deps).execute({ username: 'ann', currentPassword: 'correct horse', newPassword: 'battery staple' });
+    await saveStarted;
+    let resetFinished = false;
+    const resetting = new SetPassword(t.deps).execute({ caller: admin, memberId: 'm1', password: 'new admin password', mustChange: false }).then((result) => {
+      resetFinished = true;
+      return result;
+    });
+    await Promise.resolve();
+    assert.equal(resetFinished, false);
+    releaseSave();
+    const changed = unwrap(await changing);
+    unwrap(await resetting);
+    assert.equal((await new IdentifyCaller(t.deps).execute({ sessionToken: changed.sessionToken, touch: false })).member, null);
+  });
 });
 
 describe('sessions', () => {
@@ -114,6 +157,13 @@ describe('sessions', () => {
     assert.ok((await identify.execute({ sessionToken: token, touch: false })).member);
     t.clock.at += 11 * MIN;
     assert.equal((await identify.execute({ sessionToken: token, touch: true })).member, null);
+  });
+
+  it('keeps concurrent sign-ins within the per-member session limit', async () => {
+    const t = await signedInTeam();
+    const signIn = new SignIn(t.deps);
+    await Promise.all(Array.from({ length: 25 }, () => signIn.execute({ username: 'ann', password: 'correct horse' })));
+    assert.equal((await t.deps.sessions.forMember('m1')).length, 20);
   });
 });
 

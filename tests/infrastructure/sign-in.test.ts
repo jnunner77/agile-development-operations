@@ -55,6 +55,11 @@ describe('auth.json', () => {
     assert.deepEqual([account.isAdmin, account.mustChange, account.hasPassword], [true, true, true]);
     assert.equal((await new FileAccountRepository(file).get('nobody')).hasPassword, false);
   });
+
+  it('rejects an invalid non-null password timestamp at startup', () => {
+    fs.writeFileSync(path.join(dir, 'auth.json'), JSON.stringify({ accounts: { m1: { passwordSetAt: 'never' } } }));
+    assert.throws(() => new AuthFile(dir), /auth\.json is damaged \(account m1\)/);
+  });
 });
 
 describe('api-tokens.json', () => {
@@ -73,6 +78,13 @@ describe('api-tokens.json', () => {
     assert.equal(mode('api-tokens.json'), 0o600);
     assert.equal((await new FileApiTokenRepository(dir).findByDigest('digest-t1'))?.id, 't1');
     assert.equal(await repo.findByDigest('digest-other'), undefined);
+  });
+
+  it('fails at startup with a filename-specific error for malformed token stores or rows', () => {
+    for (const data of [{ tokens: {} }, { tokens: [null] }, { tokens: [{ id: 'bad', scope: 'admin' }] }]) {
+      fs.writeFileSync(path.join(dir, 'api-tokens.json'), JSON.stringify(data));
+      assert.throws(() => new FileApiTokenRepository(dir), /api-tokens\.json is damaged/);
+    }
   });
 
   it('writes a token’s last use at most once a minute', async () => {
@@ -139,6 +151,39 @@ describe('keeping an administrator', () => {
     assert.deepEqual((await new StoreTeamDirectory(store).all()).map((m) => m.id), ['m1']);
     assert.equal(await new StoreTeamDirectory(store).findById('nope'), undefined);
   });
+
+  it('serializes enabling sign-in with member deactivation', async () => {
+    const db = emptyDatabase();
+    db.members.push({ id: 'm1', name: 'Ann', username: 'ann', email: '', color: '#000000', active: true });
+    const store = new Store(dir, () => db);
+    const file = new AuthFile(dir);
+    const account = Account.blank('m1');
+    account.setAdmin(true, NOW);
+    account.setPassword('hash', NOW, false);
+    file.saveAccount(account);
+    guardUsableAdmin(store, file, false);
+    let markChecked: () => void = () => {};
+    let releaseEnable: () => void = () => {};
+    const checked = new Promise<void>((resolve) => (markChecked = resolve));
+    const release = new Promise<void>((resolve) => (releaseEnable = resolve));
+    const enabling = store.writes.run(async () => {
+      assert.equal(store.db.members[0]?.active, true);
+      markChecked();
+      await release;
+      file.saveSettings({ ...file.settings, enabled: true });
+    });
+    await checked;
+    const deactivating = store.transactSerial('Ann', undefined, (tx) => {
+      const member = tx.db.members[0];
+      assert.ok(member);
+      member.active = false;
+      tx.members.add(member.id);
+    });
+    releaseEnable();
+    await enabling;
+    await assert.rejects(deactivating, RejectedChangeError);
+    assert.equal(store.db.members[0]?.active, true);
+  });
 });
 
 describe('review hardening', () => {
@@ -162,15 +207,12 @@ describe('review hardening', () => {
     assert.equal(failures.size, 0);
   });
 
-  it('revokes a member’s tokens even when one is too damaged to read', async () => {
+  it('rejects a damaged token row at startup', () => {
     fs.writeFileSync(
       path.join(dir, 'api-tokens.json'),
       JSON.stringify({ tokens: [{ id: 'bad', memberId: 'm1', hash: 'h', scope: 'admin' }, { id: 'other', memberId: 'm2', hash: 'h2', scope: 'read' }] }),
     );
-    const repo = new FileApiTokenRepository(dir);
-    await assert.rejects(repo.all(), /invalid/);
-    assert.deepEqual(await repo.deleteForMember('m1'), ['bad']);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'api-tokens.json'), 'utf8')).tokens.map((t: { id: string }) => t.id), ['other']);
+    assert.throws(() => new FileApiTokenRepository(dir), /api-tokens\.json is damaged/);
   });
 
   it('refuses a token that could never expire', () => {

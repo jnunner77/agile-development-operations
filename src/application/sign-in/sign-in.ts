@@ -53,7 +53,7 @@ export class SignIn {
     await this.#deps.failedAttempts.delete(key);
     if (account.mustChange) return ok({ result: { status: 'change', reason: 'temporary' }, sessionToken: null });
     if (account.isExpired(this.#deps.clock.now(), settings.passwordExpiryDays)) return ok({ result: { status: 'change', reason: 'expired' }, sessionToken: null });
-    const sessionToken = await startSession(this.#deps, member.id);
+    const sessionToken = await this.#deps.signInWrites.run(() => startSession(this.#deps, member.id));
     return ok({ result: { status: 'ok', user: userView(member, account, settings) }, sessionToken });
   }
 }

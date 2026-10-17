@@ -33,7 +33,13 @@ function readAccount(memberId: string, raw: unknown): StoredAccount {
   if (!isRecord(raw)) return corrupt(`account ${memberId}`);
   const { isAdmin = false, passwordHash = null, passwordSetAt = null, mustChange = false } = raw;
   const textOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
-  if (typeof isAdmin !== 'boolean' || typeof mustChange !== 'boolean' || !textOrNull(passwordHash) || !textOrNull(passwordSetAt)) {
+  const validTimestamp = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
+  if (
+    typeof isAdmin !== 'boolean' ||
+    typeof mustChange !== 'boolean' ||
+    !textOrNull(passwordHash) ||
+    !(passwordSetAt === null || validTimestamp(passwordSetAt))
+  ) {
     return corrupt(`account ${memberId}`);
   }
   return { isAdmin, passwordHash, passwordSetAt, mustChange };

@@ -53,20 +53,19 @@ export class ChangePassword {
     }
     if (await deps.hasher.verify(input.newPassword, before)) return err({ code: 'PASSWORD_UNCHANGED' });
     const hash = await deps.hasher.hash(input.newPassword);
-    const saved = await deps.signInWrites.run(async (): Promise<Result<Account, SignInError>> => {
+    const saved = await deps.signInWrites.run(async (): Promise<Result<{ account: Account; sessionToken: string }, SignInError>> => {
       // Another request may have changed the password while this one was hashing.
       const account = await deps.accounts.get(member.id);
       if (account.passwordHash !== before) return err({ code: 'PASSWORD_CHANGED_MEANWHILE' });
       account.setPassword(hash, deps.clock.now(), false);
       await deps.accounts.save(account);
-      return ok(account);
+      await deps.failedAttempts.delete(key);
+      await endSessions(deps, member.id);
+      const sessionToken = await startSession(deps, member.id);
+      return ok({ account, sessionToken });
     });
     if (!saved.ok) return saved;
-    const account = saved.value;
-
-    await deps.failedAttempts.delete(key);
-    await endSessions(deps, member.id);
-    const sessionToken = await startSession(deps, member.id);
+    const { account, sessionToken } = saved.value;
     await publish(deps, account);
     return ok({ user: userView(member, account, (await signInState(deps)).settings), sessionToken });
   }

@@ -199,8 +199,8 @@ export function createExpressApp({
   /** Wrap a mutation: run it in a transaction and reply with the resulting delta. */
   const mutate =
     <T>(fn: (tx: Tx, req: Request, res: Response) => T, status = 200) =>
-    (req: Request, res: Response) => {
-      const { delta, result } = store.transact(userName(store, req), req.header('x-client-id'), (tx) => fn(tx, req, res));
+    async (req: Request, res: Response) => {
+      const { delta, result } = await store.transactSerial(userName(store, req), req.header('x-client-id'), (tx) => fn(tx, req, res));
       res.status(status).json({ delta, result });
     };
 
@@ -314,8 +314,8 @@ export function createExpressApp({
     snapshots.delete(String(req.params.id));
     res.status(204).end();
   });
-  api.post('/snapshots/:id/restore', admin, heavy, (req, res) => {
-    const safety = snapshots.restore(String(req.params.id), userName(store, req), req.header('x-client-id'));
+  api.post('/snapshots/:id/restore', admin, heavy, async (req, res) => {
+    const safety = await snapshots.restore(String(req.params.id), userName(store, req), req.header('x-client-id'));
     res.json({ safetySnapshot: safety });
   });
   api.get('/snapshots/:id/download', heavy, (req, res) => {
@@ -334,22 +334,25 @@ export function createExpressApp({
       data: store.db,
     });
   });
-  api.post('/backup/import', admin, heavy, express.json({ limit: IMPORT_LIMIT }), (req, res) => {
+  api.post('/backup/import', admin, heavy, express.json({ limit: IMPORT_LIMIT }), async (req, res) => {
     try {
-      const safety = snapshots.import(req.body, userName(store, req), req.header('x-client-id'));
+      const safety = await snapshots.import(req.body, userName(store, req), req.header('x-client-id'));
       res.json({ safetySnapshot: safety });
     } catch (err) {
       if (err instanceof HttpError) throw err;
       throw badRequest(err instanceof Error ? err.message : 'Invalid backup file');
     }
   });
-  api.post('/backup/reset', admin, heavy, (req, res) => {
+  api.post('/backup/reset', admin, heavy, async (req, res) => {
     const { mode } = z.object({ mode: z.enum(['empty', 'demo']) }).parse(req.body);
-    const settings = { ...store.db.settings };
-    const next = mode === 'demo' ? buildDemoDatabase() : emptyDatabase({ projectName: settings.projectName, teamName: settings.teamName, backup: settings.backup, workingDays: settings.workingDays, areaPaths: settings.areaPaths });
-    store.check(next);
-    const safety = snapshots.create('Before reset', `Automatic safety snapshot taken before resetting to ${mode === 'demo' ? 'demo data' : 'an empty project'}`, 'pre-reset', userName(store, req));
-    store.replace(next, req.header('x-client-id'));
+    const safety = await store.writes.run(async () => {
+      const settings = { ...store.db.settings };
+      const next = mode === 'demo' ? buildDemoDatabase() : emptyDatabase({ projectName: settings.projectName, teamName: settings.teamName, backup: settings.backup, workingDays: settings.workingDays, areaPaths: settings.areaPaths });
+      store.check(next);
+      const snapshot = snapshots.create('Before reset', `Automatic safety snapshot taken before resetting to ${mode === 'demo' ? 'demo data' : 'an empty project'}`, 'pre-reset', userName(store, req));
+      store.replace(next, req.header('x-client-id'));
+      return snapshot;
+    });
     res.json({ safetySnapshot: safety });
   });
 

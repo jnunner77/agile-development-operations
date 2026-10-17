@@ -38,10 +38,12 @@ export async function adminView(deps: Pick<SignInDeps, 'team' | 'accounts' | 'fa
 }
 
 /** Count a failed attempt against a username, forgetting old records of other usernames. */
-export async function recordFailure(deps: Pick<SignInDeps, 'failedAttempts' | 'clock'>, key: string): Promise<void> {
-  const now = deps.clock.now();
-  await deps.failedAttempts.sweep(now, (record) => isForgotten(record, now));
-  await deps.failedAttempts.save(key, afterFailure(await deps.failedAttempts.find(key), now));
+export async function recordFailure(deps: Pick<SignInDeps, 'failedAttempts' | 'clock' | 'signInWrites'>, key: string): Promise<void> {
+  await deps.signInWrites.run(async () => {
+    const now = deps.clock.now();
+    await deps.failedAttempts.sweep(now, (record) => isForgotten(record, now));
+    await deps.failedAttempts.save(key, afterFailure(await deps.failedAttempts.find(key), now));
+  });
 }
 
 /** Minutes the username is locked for, or 0. */

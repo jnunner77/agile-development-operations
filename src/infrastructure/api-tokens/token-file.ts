@@ -6,6 +6,20 @@ import { readJsonFile, writeSecretFile } from '../files.ts';
 
 /** lastUsedAt is written to disk at most this often per token; it is only shown in lists. */
 const USE_WRITE_INTERVAL_MS = 60_000;
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function readTokens(file: string): StoredApiToken[] {
+  try {
+    const raw = readJsonFile(file);
+    if (raw === undefined) return [];
+    if (!isRecord(raw) || !Array.isArray(raw['tokens'])) throw new Error('expected an object with a tokens array');
+    const tokens = raw['tokens'] as StoredApiToken[];
+    for (const token of tokens) ApiToken.reconstitute(token);
+    return tokens;
+  } catch (cause) {
+    throw new Error('api-tokens.json is damaged. Fix or restore it before starting the server.', { cause });
+  }
+}
 
 /** Same-length strings compared in constant time, so a digest lookup leaks nothing by timing. */
 function sameDigest(a: string, b: string): boolean {
@@ -24,10 +38,7 @@ export class FileApiTokenRepository implements ApiTokenRepository {
   constructor(dataDir: string, now: () => number = Date.now) {
     this.#file = path.join(dataDir, 'api-tokens.json');
     this.#now = now;
-    const raw = readJsonFile(this.#file);
-    const tokens = typeof raw === 'object' && raw !== null && 'tokens' in raw && Array.isArray(raw.tokens) ? raw.tokens : [];
-    // Each is validated by ApiToken.reconstitute when read.
-    this.#tokens = tokens as StoredApiToken[];
+    this.#tokens = readTokens(this.#file);
   }
 
   async all(): Promise<ApiToken[]> {
