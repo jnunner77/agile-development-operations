@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { branchNameFor, mentionFor } from '#domain/devlinks.ts';
+import { branchNameFor, mentionFor } from '#domain/dev-links/references.ts';
 import type { DevLink, WorkItem } from '#domain/types.ts';
 import { api } from '../api';
 import { timeAgo } from '../lib/format';

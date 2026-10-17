@@ -38,3 +38,21 @@ export async function readJsonBody(req: IncomingMessage, limit = JSON_LIMIT_BYTE
     return err({ code: 'MALFORMED_JSON' });
   }
 }
+
+/**
+ * Read a body exactly as sent, whatever its type, up to `limit` bytes (for webhooks, whose
+ * signatures cover the raw bytes).
+ */
+export async function readRawBody(req: IncomingMessage, limit: number): Promise<Result<Uint8Array, { readonly code: 'BODY_TOO_LARGE' }>> {
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > limit) return err({ code: 'BODY_TOO_LARGE' });
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    size += buffer.length;
+    if (size > limit) return err({ code: 'BODY_TOO_LARGE' });
+    chunks.push(buffer);
+  }
+  return ok(Buffer.concat(chunks));
+}

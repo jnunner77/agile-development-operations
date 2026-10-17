@@ -49,6 +49,7 @@ import { DeleteWorkItems } from '#application/work-items/delete-work-items.ts';
 import { EditComment } from '#application/work-items/edit-comment.ts';
 import { MoveWorkItem } from '#application/work-items/move-work-item.ts';
 import { PurgeWorkItem } from '#application/work-items/purge-work-item.ts';
+import { RemoveDevLink } from '#application/work-items/remove-dev-link.ts';
 import { RemoveHyperlink } from '#application/work-items/remove-hyperlink.ts';
 import { RemoveLink } from '#application/work-items/remove-link.ts';
 import { RestoreWorkItem } from '#application/work-items/restore-work-item.ts';
@@ -67,6 +68,17 @@ import { FunctionClock, SystemClock } from '#infrastructure/system-clock.ts';
 import { combineRoutes, type Router } from '#presentation/http/router.ts';
 import { teamRoutes } from '#presentation/team/routes.ts';
 import { workItemRoutes } from '#presentation/work-items/routes.ts';
+import { GetGitHubAdminView } from '#application/integrations/get-github-admin-view.ts';
+import { GetWebhookStatus } from '#application/integrations/get-webhook-status.ts';
+import { ReceiveGitHubDelivery } from '#application/integrations/receive-github-delivery.ts';
+import { RotateWebhookSecret } from '#application/integrations/rotate-webhook-secret.ts';
+import { UpdateGitHubSettings } from '#application/integrations/update-github-settings.ts';
+import { MemoryDeliveryLog } from '#infrastructure/github/delivery-log.ts';
+import { HmacSignatures } from '#infrastructure/github/hmac-signatures.ts';
+import { GitHubPayloadReader } from '#infrastructure/github/payloads.ts';
+import { FileGitHubIntegrationRepository, IntegrationsFile } from '#infrastructure/integrations/integrations-file.ts';
+import { SerialQueue } from '#infrastructure/serial-writes.ts';
+import { integrationRoutes } from '#presentation/integrations/routes.ts';
 import { createExpressApp, type AppOptions } from '../server/app.ts';
 
 export interface AuthOptions {
@@ -140,6 +152,11 @@ export function composeDeps(store: Store, auth: Auth, events: LocalEventBus): Ap
     settings: new JsonSettingsRepository(unitOfWork),
     team: new StoreTeamDirectory(store),
     ...signIn,
+    github: new FileGitHubIntegrationRepository(new IntegrationsFile(store.dataDir)),
+    deliveries: new MemoryDeliveryLog(),
+    webhookSignatures: new HmacSignatures(),
+    githubPayloads: new GitHubPayloadReader(),
+    integrationWrites: new SerialQueue(),
     clock: new SystemClock(),
     ids: new RandomIds(),
     events,
@@ -183,6 +200,7 @@ export function composeRoutes(deps: AppDeps, signInDeps: SignInDeps, context: Re
     deleteComment: new DeleteComment(deps),
     addHyperlink: new AddHyperlink(deps),
     removeHyperlink: new RemoveHyperlink(deps),
+    removeDevLink: new RemoveDevLink(deps),
   });
   const team = teamRoutes({
     identify,
@@ -196,7 +214,15 @@ export function composeRoutes(deps: AppDeps, signInDeps: SignInDeps, context: Re
     deleteMember: new DeleteMember(deps),
     updateSettings: new UpdateSettings(deps),
   });
-  return combineRoutes(signIn, workItems, team);
+  const integrations = integrationRoutes({
+    identify,
+    getWebhookStatus: new GetWebhookStatus(deps),
+    receiveGitHubDelivery: new ReceiveGitHubDelivery(deps),
+    getGitHubAdminView: new GetGitHubAdminView(deps),
+    updateGitHubSettings: new UpdateGitHubSettings(deps),
+    rotateWebhookSecret: new RotateWebhookSecret(deps),
+  });
+  return combineRoutes(signIn, workItems, team, integrations);
 }
 
 /** The whole app: the layered slices plugged into the Express server that still hosts the rest. */

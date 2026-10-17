@@ -5,11 +5,10 @@ import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, createAuth } from '../../src/compose.ts';
-import { GitHubIntegration } from '../../server/github.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
-import { branchIds, branchNameFor, mentionedIds } from '#domain/devlinks.ts';
+import { branchIds, branchNameFor, mentionedIds } from '#domain/dev-links/references.ts';
 import type { WorkItem } from '#domain/types.ts';
 
 let dir: string;
@@ -128,7 +127,7 @@ describe('webhook security', () => {
     await create('Task');
     const payload = { ref: 'wi/1', ref_type: 'branch', repository: REPO, sender: SENDER };
     // The first attempt fails while being processed; GitHub then redelivers it with the same id.
-    vi.spyOn(store, 'transact').mockImplementationOnce(() => {
+    vi.spyOn(store, 'save').mockImplementationOnce(() => {
       throw new Error('temporary failure');
     });
     expect((await deliver('create', payload, { id: 'retry' })).status).toBe(500);
@@ -153,7 +152,7 @@ describe('webhook security', () => {
 
   it('works while sign-in is on, without a session', async () => {
     const auth = createAuth(store);
-    const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false, github: new GitHubIntegration(store) });
+    const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
     await request(signedIn).patch(`/api/auth/accounts/${member.id}`).send({ isAdmin: true });
     await request(signedIn).post(`/api/auth/accounts/${member.id}/password`).send({ password: 'correct horse', mustChange: false });

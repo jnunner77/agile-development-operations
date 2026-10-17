@@ -6,7 +6,7 @@ import { HttpError, badRequest } from './errors.ts';
 import { adminAccessOf, mayModerateCommentsOf, requireAdmin } from '#application/access.ts';
 import { httpFailure } from '#presentation/http/errors.ts';
 import type { Caller } from '#application/caller.ts';
-import { MissingRecordError, RejectedChangeError, type Store, type Tx } from '#infrastructure/json-store/store.ts';
+import { MissingRecordError, RejectedChangeError, type Store } from '#infrastructure/json-store/store.ts';
 import type { RequestContext } from '#presentation/http/context.ts';
 import type { Router } from '#presentation/http/router.ts';
 import type { Authenticator, RequestIdentity } from '#presentation/sign-in/authenticator.ts';
@@ -15,7 +15,6 @@ import type { SnapshotManager } from './snapshots.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { buildDemoDatabase } from './seed.ts';
 import { Security, retryAfterOf, securityHeaders } from './security.ts';
-import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github.ts';
 
 /** Routes served by the layered code (src/), relative to /api. */
 export type LayeredRoutes = Pick<Router, 'handle' | 'owns'>;
@@ -41,8 +40,6 @@ export interface AppOptions {
   trustProxy?: boolean | number | string | undefined;
   /** Rate limits and abuse protection; pass false to turn them off (tests). */
   security?: Security | false;
-  /** Source control integration; one is created if omitted. */
-  github?: GitHubIntegration;
 }
 
 /** Largest JSON body accepted, except for importing a backup (admins only). */
@@ -82,12 +79,6 @@ function callerId(store: Store, req: Request, identity: RequestIdentity): string
   return named.length === 1 ? named[0].id : null;
 }
 
-const intParam = (value: string | string[] | undefined) => {
-  const n = Number(value);
-  if (!Number.isInteger(n)) throw badRequest('Invalid id');
-  return n;
-};
-
 const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
 
 
@@ -103,7 +94,6 @@ export function createExpressApp({
   staticDir,
   trustProxy,
   security = new Security(),
-  github = new GitHubIntegration(store),
 }: AppOptions) {
   // Who is calling is worked out by the middleware below and handed to the layered routes.
   const requests = new WeakMap<object, { caller: Caller; identity: RequestIdentity; secure: boolean }>();
@@ -127,8 +117,7 @@ export function createExpressApp({
   // Small bodies everywhere; the backup import route parses its own larger body, but only
   // after the caller has been checked as an administrator.
   const smallJson = express.json({ limit: JSON_LIMIT });
-  const ownBodyParser = new Set(['/api/backup/import', WEBHOOK_PATH]);
-  app.use((req, res, next) => (ownBodyParser.has(req.path) || ownedByLayers(req) ? next() : smallJson(req, res, next)));
+  app.use((req, res, next) => (req.path === '/api/backup/import' || ownedByLayers(req) ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
 
@@ -182,9 +171,6 @@ export function createExpressApp({
     api.use(security.apiLimits(() => signIn.enabled));
     api.use(['/auth/login', '/auth/password'], security.signIn);
   }
-  // GitHub webhooks authenticate with a signature over the body, not a session.
-  api.post('/integrations/github/webhook', github.precheck, GitHubIntegration.rawBody, github.webhook);
-
   // With sign-in on, everything below needs a valid session (or an API token).
   api.use(identify);
   api.use((req, res, next) => {
@@ -195,14 +181,6 @@ export function createExpressApp({
     else if (decision.actAs !== 'as-sent') req.headers['x-user'] = encodeURIComponent(decision.actAs);
     next();
   });
-
-  /** Wrap a mutation: run it in a transaction and reply with the resulting delta. */
-  const mutate =
-    <T>(fn: (tx: Tx, req: Request, res: Response) => T, status = 200) =>
-    async (req: Request, res: Response) => {
-      const { delta, result } = await store.transactSerial(userName(store, req), req.header('x-client-id'), (tx) => fn(tx, req, res));
-      res.status(status).json({ delta, result });
-    };
 
   /**
    * With sign-in on, or for an API token, only a comment's author or an administrator (never a
@@ -220,8 +198,8 @@ export function createExpressApp({
     };
   }
 
-  // Sign-in and API tokens, work items, links, the recycle bin, sprints, capacity, team members
-  // and project settings.
+  // Sign-in and API tokens, work items, links, the recycle bin, sprints, capacity, team members,
+  // project settings and the GitHub integration.
   api.use((req, res, next) => {
     if (!layered.owns(req.method, req.path)) return next();
     requests.set(req, { caller: callerOf(req), identity: identityOf(req), secure: req.secure });
@@ -276,25 +254,6 @@ export function createExpressApp({
       unsubscribe();
       release();
     });
-  });
-
-  // ---- Work item development links (GitHub) -----------------------------------
-  api.delete(
-    '/workitems/:id/devlinks/:linkId',
-    mutate((tx, req) => github.removeLink(tx, intParam(req.params.id), String(req.params.linkId))),
-  );
-
-  // ---- Integrations (administrators) -----------------------------------------
-  api.get('/integrations/github', admin, (_req, res) => {
-    res.json(github.adminView());
-  });
-  api.put('/integrations/github', admin, (req, res) => {
-    github.updateSettings(githubSettingsSchema.parse(req.body));
-    res.json(github.adminView());
-  });
-  api.post('/integrations/github/secret', admin, (_req, res) => {
-    const secret = github.rotateSecret();
-    res.json({ secret, view: github.adminView() });
   });
 
   // ---- Snapshots & backups ----------------------------------------------------

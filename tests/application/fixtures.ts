@@ -15,6 +15,10 @@ import { MemoryRecycleBinRepository } from '#infrastructure/memory/recycle-bin-r
 import { MemoryUnitOfWork } from '#infrastructure/memory/unit-of-work.ts';
 import { SerialQueue } from '#infrastructure/serial-writes.ts';
 import { MemoryWorkItemRepository } from '#infrastructure/memory/work-item-repository.ts';
+import { MemoryGitHubIntegrationRepository } from '#infrastructure/memory/github-integration-repository.ts';
+import { MemoryDeliveryLog } from '#infrastructure/github/delivery-log.ts';
+import type { DevelopmentEvent } from '#domain/dev-links/activity.ts';
+import { err, ok } from '#shared/result.ts';
 import type { Result } from '#shared/result.ts';
 
 export const NOW = new Date('2026-03-02T10:00:00.000Z');
@@ -40,6 +44,9 @@ export function setup() {
   const signInSettings = new MemorySignInSettingsRepository();
   const apiTokens = new MemoryApiTokenRepository();
   const failedAttempts = new MemoryFailedAttemptsRepository();
+  const github = new MemoryGitHubIntegrationRepository();
+  /** Development events by the body that stands for them. */
+  const payloads = new Map<string, DevelopmentEvent>();
   /** Moves sign-in's clock; tests step it to expire sessions, lockouts and passwords. */
   const clock = { at: NOW.getTime() };
   let secret = 0;
@@ -69,9 +76,21 @@ export function setup() {
       newSessionToken: () => `session-${++secret}`,
       newApiToken: () => `boards_secret${++secret}`,
       digest: (s) => `digest:${s}`,
+      newWebhookSecret: () => `webhook-${++secret}`,
     },
     signInWrites: new SerialQueue(),
     signInForcedOff: false,
+    github,
+    deliveries: new MemoryDeliveryLog(),
+    // Stand-ins: a delivery is "signed" with `signed:<secret>`, and its body names a sent event.
+    webhookSignatures: { matches: (secret, _body, signature) => signature === `signed:${secret}` },
+    githubPayloads: {
+      read: (_event, body) => {
+        const sent = payloads.get(new TextDecoder().decode(body));
+        return sent ? ok(sent) : err({ code: 'PAYLOAD_NOT_JSON' });
+      },
+    },
+    integrationWrites: new SerialQueue(),
     clock: { now: () => new Date(clock.at) },
     ids: { next: () => `id-${++n}` },
     events: {
@@ -91,7 +110,7 @@ export function setup() {
     assert.ok(result.ok, JSON.stringify(result));
     return result.value.result;
   };
-  return { deps, items, links, recycleBin, sprints, capacities, members, settings, accounts, signInSettings, apiTokens, failedAttempts, clock, unitOfWork, published, item, create };
+  return { deps, github, payloads, items, links, recycleBin, sprints, capacities, members, settings, accounts, signInSettings, apiTokens, failedAttempts, clock, unitOfWork, published, item, create };
 }
 
 export function unwrap<T, E>(result: Result<T, E>): T {

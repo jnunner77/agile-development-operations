@@ -180,30 +180,36 @@ otherwise passwords travel over the network unencrypted.
 The server is moving to an *onion* architecture: business rules sit in the centre, everything
 else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
 outward. Work items, links, the recycle bin, sprints, capacity, team members, project settings,
-sign-in and API tokens have moved; GitHub and snapshots follow.
+sign-in, API tokens and the GitHub integration have moved; snapshots and backups follow.
 
 ```
 src/
   shared/          Result and Brand helpers. Plain TypeScript.
   domain/          Business rules, with no Node or browser APIs: the process template (types,
-                   states), dates, capacity and burndown, and the aggregates (work items, links,
-                   recycle bin, sprints, capacity plans, team members, project settings, sign-in
-                   accounts and settings, API tokens) with their rules (passwords, lockout,
-                   sessions, keeping an administrator), errors, events and repository interfaces.
+                   states), dates, capacity and burndown, and the aggregates (work items with their
+                   development links, links, recycle bin, sprints, capacity plans, team members,
+                   project settings, sign-in accounts and settings, API tokens, the GitHub
+                   integration) with their rules (passwords, lockout, sessions, keeping an
+                   administrator, what source control activity links to and how it moves work
+                   along the board), errors, events and repository interfaces.
   application/     One class per use case (create, move, bulk edit, copy, restore; sprints,
-                   capacity, members, settings; sign in, identify a caller, passwords, tokens),
-                   who may administer the project, the ports they need (clock, ids, events, unit
-                   of work, password hashing, secrets) and the API's data contracts.
+                   capacity, members, settings; sign in, identify a caller, passwords, tokens;
+                   receive a GitHub delivery, its settings and secret), who may administer the
+                   project, the ports they need (clock, ids, events, unit of work, password
+                   hashing, secrets, webhook signatures, GitHub payloads) and the API's data
+                   contracts.
   infrastructure/  Adapters for those ports: the JSON document store (atomic writes to
-                   data/db.json) and repositories over it; auth.json and api-tokens.json (kept
-                   apart, readable by the server only); scrypt; in-memory sessions and lockouts;
-                   in-memory versions of everything for tests.
+                   data/db.json) and repositories over it; auth.json, api-tokens.json and
+                   integrations.json (kept apart, readable by the server only); scrypt; HMAC
+                   webhook signatures and the translation of GitHub's payloads; in-memory
+                   sessions, lockouts and recent deliveries; in-memory versions of everything
+                   for tests.
   presentation/    node:http routes: parse requests by hand, call a use case, map its errors to
-                   HTTP statuses. Also the session cookie, and the gate that decides which
-                   requests need signing in.
+                   HTTP statuses. Also the session cookie, the gate that decides which requests
+                   need signing in, and the GitHub webhook (checked before its body is read).
   main.ts          Starts the server. compose.ts wires the concrete classes together.
-server/   Express code for what hasn't moved yet: GitHub, snapshots and backups, the live update
-          stream and rate limits. It asks the layers who is calling for every request.
+server/   Express code for what hasn't moved yet: snapshots and backups, the live update stream
+          and rate limits. It asks the layers who is calling for every request.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
 tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
           whole app over HTTP.

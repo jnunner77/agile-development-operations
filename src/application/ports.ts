@@ -49,6 +49,8 @@ export interface Secrets {
   /** A new API token secret, starting with the API token prefix. */
   newApiToken(): string;
   digest(secret: string): string;
+  /** A new secret for signing webhook deliveries. */
+  newWebhookSecret(): string;
 }
 
 /**

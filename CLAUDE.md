@@ -3,7 +3,7 @@
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
 client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
 architecture in `src/` (shared, domain, application, infrastructure, presentation); the features
-not yet moved there (GitHub, snapshots and backups) still run on the Express code in `server/`.
+not yet moved there (snapshots and backups) still run on the Express code in `server/`.
 See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
@@ -70,8 +70,9 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
   `store.transact` in `server/`), so it is validated, persisted, recorded in work item history
   and broadcast to browsers as deltas, or not applied at all.
 - Secrets (password hashes, API token digests, webhook secrets) live in their own files in the
-  data directory (`auth.json`, `api-tokens.json`, written 0600), never in `db.json`, snapshots,
-  exports or API responses. Sessions and failed sign-in counts stay in memory.
+  data directory (`auth.json`, `api-tokens.json`, `integrations.json`, written 0600), never in
+  `db.json`, snapshots, exports or API responses. Sessions, failed sign-in counts and recent
+  webhook deliveries stay in memory.
 - No non-null assertions (`!`), `any`, or casts except branding ids at trust boundaries and typing
   raw JSON in infrastructure (which the domain then validates).
 - Tests: `node:test` tests in `tests/<layer>/` for code in `src/` (domain without fakes;

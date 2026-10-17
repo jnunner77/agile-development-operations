@@ -5,7 +5,9 @@ import type { CapacityRepository, SprintRepository } from '#domain/sprints/repos
 import type { MemberRepository } from '#domain/team/repository.ts';
 import type { WorkItemRepository } from '#domain/work-items/repository.ts';
 import type { ApiTokenRepository } from '#domain/api-tokens/repository.ts';
+import type { GitHubIntegrationRepository } from '#domain/integrations/repository.ts';
 import type { AccountRepository, FailedAttemptsRepository, SessionRepository, SignInSettingsRepository } from '#domain/sign-in/repository.ts';
+import type { DeliveryLog, GitHubPayloads, WebhookSignatures } from './integrations/ports.ts';
 import type { Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
 
 /** Everything the use cases can depend on. Each module takes the part it needs. */
@@ -29,6 +31,12 @@ export interface AppDeps {
   readonly signInWrites: SerialWrites;
   /** Sign-in is forced off (AUTH_DISABLED), whatever its settings say: recovery if every admin is locked out. */
   readonly signInForcedOff: boolean;
+  readonly github: GitHubIntegrationRepository;
+  readonly deliveries: DeliveryLog;
+  readonly webhookSignatures: WebhookSignatures;
+  readonly githubPayloads: GitHubPayloads;
+  /** Integration settings and secret changes run one at a time. */
+  readonly integrationWrites: SerialWrites;
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly events: EventPublisher;

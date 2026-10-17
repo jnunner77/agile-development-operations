@@ -10,6 +10,7 @@ import type { DeleteWorkItems } from '#application/work-items/delete-work-items.
 import type { EditComment } from '#application/work-items/edit-comment.ts';
 import type { MoveWorkItem } from '#application/work-items/move-work-item.ts';
 import type { PurgeWorkItem } from '#application/work-items/purge-work-item.ts';
+import type { RemoveDevLink } from '#application/work-items/remove-dev-link.ts';
 import type { RemoveHyperlink } from '#application/work-items/remove-hyperlink.ts';
 import type { RemoveLink } from '#application/work-items/remove-link.ts';
 import type { RestoreWorkItem } from '#application/work-items/restore-work-item.ts';
@@ -47,6 +48,7 @@ export interface WorkItemRouteDeps {
   readonly deleteComment: Pick<DeleteComment, 'execute'>;
   readonly addHyperlink: Pick<AddHyperlink, 'execute'>;
   readonly removeHyperlink: Pick<RemoveHyperlink, 'execute'>;
+  readonly removeDevLink: Pick<RemoveDevLink, 'execute'>;
 }
 
 /** Work item, link and recycle bin routes, relative to /api. */
@@ -118,6 +120,12 @@ export function workItemRoutes(deps: WorkItemRouteDeps): Router {
       if (!id.ok) return;
       const hyperlinkId = params['linkId'] ?? '';
       await reply(res, deps.removeHyperlink.execute({ caller: identify(req, res), workItemId: id.value, hyperlinkId }), 200);
+    })
+    .add('DELETE', '/workitems/:id/devlinks/:linkId', async (req, res, params) => {
+      const id = pathId(res, params['id']);
+      if (!id.ok) return;
+      const linkId = params['linkId'] ?? '';
+      await reply(res, deps.removeDevLink.execute({ caller: identify(req, res), workItemId: id.value, linkId }), 200);
     })
     .add('POST', '/links', async (req, res) => {
       const body = await input(req, res, parseLink);
