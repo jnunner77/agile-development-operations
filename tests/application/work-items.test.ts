@@ -240,6 +240,26 @@ describe('copying', () => {
     const order = t.items.rows().sort((a, b) => a.stackRank - b.stackRank).map((w) => w.id);
     assert.deepEqual(order, [pbi.id, copy.id, task.id, children[0]?.id, after.id]);
   });
+
+  it('renumbers repeated copies of an item and its children without losing their order', async () => {
+    const t = setup();
+    const pbi = await t.create('Product Backlog Item');
+    const task = await t.create('Task', { parentId: pbi.id });
+    const after = await t.create('Bug');
+    const copies: number[] = [];
+    const childCopies: number[] = [];
+    const copy = new CopyWorkItem(t.deps);
+
+    for (let i = 0; i < 60; i++) {
+      const result = unwrap(await copy.execute({ caller: ann, id: pbi.id, includeChildren: true })).result;
+      copies.push(result.id);
+      childCopies.push(t.items.rows().find((item) => item.parentId === result.id)!.id);
+    }
+
+    const order = t.items.rows().sort((a, b) => a.stackRank - b.stackRank).map((w) => w.id);
+    assert.deepEqual(order, [pbi.id, ...copies.toReversed(), task.id, ...childCopies.toReversed(), after.id]);
+    assert.equal(new Set(t.items.rows().map((item) => item.stackRank)).size, t.items.rows().length);
+  });
 });
 
 describe('links', () => {

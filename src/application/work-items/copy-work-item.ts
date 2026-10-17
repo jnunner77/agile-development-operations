@@ -1,7 +1,7 @@
 import { LinkDraft } from '#domain/links/link.ts';
 import { copiedFields, copyTitle } from '#domain/work-items/copy.ts';
 import { FieldChanges } from '#domain/work-items/fields.ts';
-import { rankBetween } from '#domain/work-items/ranking.ts';
+import { needsRenumbering, rankBetween, renumbered } from '#domain/work-items/ranking.ts';
 import type { WorkItemAggregate } from '#domain/work-items/work-item.ts';
 import type { WorkItem } from '#domain/types.ts';
 import { err, ok, type Result } from '#shared/result.ts';
@@ -56,9 +56,17 @@ export class CopyWorkItem {
     if (!fields.ok) return fields;
     const copy = await createItem(this.#deps, session, { type: from.type, fields: fields.value, position: 'bottom' });
     if (!copy.ok) return copy;
-    const rank = rankBetween(await this.#deps.items.ranks(), copy.value.id, from.id, null, copy.value.stackRank);
+    const ranks = await this.#deps.items.ranks();
+    const rank = rankBetween(ranks, copy.value.id, from.id, null, copy.value.stackRank);
     if (!rank.ok) return rank;
     if (copy.value.moveToRank(rank.value)) await save(this.#deps, session, copy.value);
+    const updated = ranks.map((r) => (r.id === copy.value.id ? { id: r.id, stackRank: rank.value } : r));
+    if (needsRenumbering(updated)) {
+      for (const [id, newRank] of renumbered(updated)) {
+        const item = id === copy.value.id ? copy.value : await this.#deps.items.findById(id);
+        if (item?.moveToRank(newRank)) await save(this.#deps, session, item);
+      }
+    }
     return copy;
   }
 }
