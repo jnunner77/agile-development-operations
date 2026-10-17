@@ -3,8 +3,8 @@
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
 client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
 architecture in `src/` (shared, domain, application, infrastructure, presentation); the features
-not yet moved there still run on the Express code in `server/`. See `README.md` for features and
-the architecture, and `deploy/README.md` for hosting.
+not yet moved there (sign-in, API tokens, GitHub, snapshots) still run on the Express code in
+`server/`. See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
 
@@ -60,6 +60,8 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
     hand-written parsers, and an exhaustive switch (ending in `assertNever`) from error codes to
     HTTP statuses.
   - `src/compose.ts` is the only place that knows the concrete classes.
+  - Who may administer the project is decided in the application (`requireAdmin`); routes that
+    need it check before reading the request, as the Express routes did.
 - No new runtime dependencies in `src/`. Express and zod remain only in `server/` until the
   features there move into the layers. Move one feature at a time, as the work items slice did.
 - Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`, or

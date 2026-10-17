@@ -46,17 +46,6 @@ export class Tx {
     return item;
   }
 
-  sprint(id: string) {
-    const sprint = this.db.sprints.find((s) => s.id === id);
-    if (!sprint) throw new MissingRecordError('Sprint');
-    return sprint;
-  }
-
-  member(id: string) {
-    const member = this.db.members.find((m) => m.id === id);
-    if (!member) throw new MissingRecordError('Team member');
-    return member;
-  }
 
   touchItem(id: number) {
     this.items.add(id);

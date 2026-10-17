@@ -4,7 +4,7 @@ import type { BulkUpdateWorkItemsInput } from '#application/work-items/bulk-upda
 import type { CreateWorkItemInput } from '#application/work-items/create-work-item.ts';
 import type { MoveWorkItemInput } from '#application/work-items/move-work-item.ts';
 import { FIELD_NAMES, isFieldName, type FieldInput, type FieldName } from '#domain/work-items/fields.ts';
-import { ok, type Result } from '#shared/result.ts';
+import { ok } from '#shared/result.ts';
 import {
   arrayOf,
   boolean,
@@ -17,7 +17,6 @@ import {
   optional,
   required,
   string,
-  type ParseError,
   type Parsed,
 } from '../http/parse.ts';
 
@@ -189,10 +188,4 @@ export function parseHyperlink(value: unknown): Parsed<Without<AddHyperlinkInput
   const comment = optional(body.value, 'comment', string);
   if (!comment.ok) return comment;
   return ok({ url: url.value, comment: comment.value });
-}
-
-/** A numeric id from the path. */
-export function parseId(raw: string | undefined): Result<number, ParseError> {
-  const n = Number(raw);
-  return Number.isInteger(n) ? ok(n) : invalid('Invalid id');
 }

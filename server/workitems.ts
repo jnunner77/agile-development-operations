@@ -5,10 +5,10 @@ import type { FieldChange, WorkItem } from '#domain/types.ts';
 import type { Tx } from '#infrastructure/json-store/store.ts';
 
 /**
- * Field changes made by the parts of the server not yet moved into the layers (deleting a sprint
- * or member, GitHub moving an item's state). They go through the work item aggregate, so the
- * history, reason, closed date and remaining-work rules are the same everywhere. Callers have
- * already checked that the sprint, member or state they set exists.
+ * Field changes made by the parts of the server not yet moved into the layers (GitHub moving an
+ * item's state). They go through the work item aggregate, so the history, reason, closed date
+ * and remaining-work rules are the same everywhere. Callers have already checked that the state
+ * they set exists.
  */
 export function applyPatch(tx: Tx, item: WorkItem, patch: FieldInput, note?: string): FieldChange[] {
   const changes = FieldChanges.validate(patch);

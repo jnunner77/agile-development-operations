@@ -60,3 +60,14 @@ export class Router {
     return false;
   };
 }
+
+/** Several route sets tried in turn, as one. */
+export function combineRoutes(...routes: readonly Pick<Router, 'handle' | 'owns'>[]): Pick<Router, 'handle' | 'owns'> {
+  return {
+    owns: (method, path) => routes.some((r) => r.owns(method, path)),
+    handle: async (req, res) => {
+      for (const r of routes) if (await r.handle(req, res)) return true;
+      return false;
+    },
+  };
+}

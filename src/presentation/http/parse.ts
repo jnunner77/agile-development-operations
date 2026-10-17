@@ -22,7 +22,7 @@ export function object(value: unknown, allowed?: readonly string[], where = ''):
   return ok(value);
 }
 
-type Reader<T> = (value: unknown, key: string) => Parsed<T>;
+export type Reader<T> = (value: unknown, key: string) => Parsed<T>;
 
 const typeError = (key: string, expected: string) => invalid(`${key}: Expected ${expected}`);
 

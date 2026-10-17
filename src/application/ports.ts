@@ -1,4 +1,5 @@
 import type { DomainEvent } from '#domain/events.ts';
+import type { Member } from '#domain/types.ts';
 import type { Result } from '#shared/result.ts';
 import type { Delta } from './contracts/database.ts';
 
@@ -35,12 +36,10 @@ export interface UnitOfWork {
 }
 
 /**
- * What the work item use cases need to know about the rest of the project. Sprints, members and
- * settings move into their own aggregates in a later slice; until then this port answers for them.
+ * With sign-in on, at least one administrator who can actually sign in must remain. Who is an
+ * administrator is part of sign-in, which hasn't moved into the layers yet; this port asks it.
  */
-export interface ProjectDirectory {
-  memberExists(id: string): Promise<boolean>;
-  sprintExists(id: string): Promise<boolean>;
-  /** Area path for new items that have no parent to inherit one from. */
-  defaultAreaPath(): Promise<string>;
+export interface AdminSafeguard {
+  /** Whether a team made of `members` would still have an administrator who can sign in. */
+  keepsUsableAdmin(members: readonly Member[]): Promise<boolean>;
 }

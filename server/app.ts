@@ -11,7 +11,6 @@ import type { Router } from '#presentation/http/router.ts';
 import type { SnapshotManager } from './snapshots.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { buildDemoDatabase } from './seed.ts';
-import * as team from './team.ts';
 import { AuthManager } from './auth.ts';
 import { Security, retryAfterOf, securityHeaders } from './security.ts';
 import { GitHubIntegration, WEBHOOK_PATH, githubSettingsSchema } from './github.ts';
@@ -81,11 +80,11 @@ const intParam = (value: string | string[] | undefined) => {
   return n;
 };
 
-const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, origin: undefined };
+const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
 
 /**
  * The Express server for everything not yet moved into the layers. It handles security, sign-in
- * and tokens for every request, then hands work item requests to the layered routes.
+ * and tokens for every request, then hands requests for the moved slices to the layered routes.
  */
 export function createExpressApp({
   store,
@@ -165,11 +164,12 @@ export function createExpressApp({
       name: userName(store, req),
       memberId: callerId(store, req, res),
       mayModerateComments: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)),
+      admin: auth.adminAccess(res),
       origin: req.header('x-client-id'),
     };
   };
 
-  // Work items, links and the recycle bin.
+  // Work items, links, the recycle bin, sprints, capacity, team members and project settings.
   api.use((req, res, next) => {
     if (!layered.owns(req.method, req.path)) return next();
     callers.set(req, callerOf(req, res));
@@ -231,53 +231,6 @@ export function createExpressApp({
     const secret = github.rotateSecret();
     res.json({ secret, view: github.adminView() });
   });
-
-  // ---- Sprints & capacity -----------------------------------------------------
-  api.post(
-    '/sprints',
-    mutate((tx, req) => team.createSprint(tx, team.sprintSchema.parse(req.body)), 201),
-  );
-  api.patch(
-    '/sprints/:id',
-    mutate((tx, req) => team.updateSprint(tx, String(req.params.id), team.sprintSchema.parse(req.body))),
-  );
-  api.delete(
-    '/sprints/:id',
-    mutate((tx, req) => {
-      const moveTo = typeof req.query.moveTo === 'string' && req.query.moveTo ? req.query.moveTo : null;
-      team.deleteSprint(tx, String(req.params.id), moveTo);
-    }),
-  );
-  api.put(
-    '/sprints/:id/capacity',
-    mutate((tx, req) => team.setCapacity(tx, String(req.params.id), team.capacitySchema.parse(req.body))),
-  );
-  api.post(
-    '/sprints/:id/capacity/copy',
-    mutate((tx, req) => team.copyCapacity(tx, String(req.params.id), z.object({ fromSprintId: z.string() }).parse(req.body).fromSprintId)),
-  );
-
-  // ---- Team & settings --------------------------------------------------------
-  api.post(
-    '/members',
-    admin,
-    mutate((tx, req) => team.createMember(tx, team.memberSchema.parse(req.body)), 201),
-  );
-  api.patch(
-    '/members/:id',
-    admin,
-    mutate((tx, req) => team.updateMember(tx, String(req.params.id), team.memberSchema.parse(req.body))),
-  );
-  api.delete(
-    '/members/:id',
-    admin,
-    mutate((tx, req) => team.deleteMember(tx, String(req.params.id))),
-  );
-  api.patch(
-    '/settings',
-    admin,
-    mutate((tx, req) => team.updateSettings(tx, team.settingsSchema.parse(req.body))),
-  );
 
   // ---- Snapshots & backups ----------------------------------------------------
   const snapshotInput = z.object({ name: z.string().trim().max(200).optional(), description: z.string().max(2000).optional() }).strict();

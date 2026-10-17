@@ -8,8 +8,9 @@ import { bottomRank, topRank } from '#domain/work-items/ranking.ts';
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
 import type { WorkItemType } from '#domain/process.ts';
 import { err, ok, type Result } from '#shared/result.ts';
+import { memberExists, sprintExists } from '../lookups.ts';
 import type { WorkItemDeps, WorkItemsError } from './deps.ts';
-import type { ChangeSession } from './session.ts';
+import type { ChangeSession } from '../session.ts';
 
 // Steps shared by several work item use cases. They orchestrate; the rules are in the domain.
 
@@ -20,15 +21,17 @@ export async function findItem(deps: Pick<WorkItemDeps, 'items'>, rawId: number)
   return item ? ok(item) : err({ code: 'WORK_ITEM_NOT_FOUND', id: rawId });
 }
 
+type ReferenceDeps = Pick<WorkItemDeps, 'items' | 'sprints' | 'members'>;
+
 /** Check that the sprint, member and parent a change points at exist and fit. Returns the parent. */
 export async function checkReferences(
-  deps: Pick<WorkItemDeps, 'items' | 'project'>,
+  deps: ReferenceDeps,
   item: { readonly id: number; readonly type: WorkItemType },
   changes: FieldChanges,
 ): Promise<Result<WorkItemAggregate | undefined, WorkItemError>> {
   const { iterationId, assignedTo } = changes.values;
-  if (iterationId != null && !(await deps.project.sprintExists(iterationId))) return err({ code: 'SPRINT_NOT_FOUND', id: iterationId });
-  if (assignedTo != null && !(await deps.project.memberExists(assignedTo))) return err({ code: 'MEMBER_NOT_FOUND', id: assignedTo });
+  if (iterationId != null && !(await sprintExists(deps, iterationId))) return err({ code: 'SPRINT_NOT_FOUND', id: iterationId });
+  if (assignedTo != null && !(await memberExists(deps, assignedTo))) return err({ code: 'MEMBER_NOT_FOUND', id: assignedTo });
   return checkParent(item, changes.parentId, deps.items);
 }
 
@@ -37,7 +40,7 @@ export async function checkReferences(
  * follow it to the new one (as drag and drop and bulk edits do).
  */
 export async function editItem(
-  deps: Pick<WorkItemDeps, 'items' | 'project'>,
+  deps: ReferenceDeps,
   session: ChangeSession,
   item: WorkItemAggregate,
   changes: FieldChanges,
@@ -65,7 +68,7 @@ export async function editItem(
 }
 
 export async function createItem(
-  deps: Pick<WorkItemDeps, 'items' | 'project'>,
+  deps: ReferenceDeps & Pick<WorkItemDeps, 'settings'>,
   session: ChangeSession,
   input: { readonly type: WorkItemType; readonly fields: FieldChanges; readonly position: 'top' | 'bottom' },
 ): Promise<Result<WorkItemAggregate, WorkItemError>> {
@@ -78,7 +81,7 @@ export async function createItem(
     type: input.type,
     fields: input.fields,
     parent: parent.value,
-    defaultAreaPath: await deps.project.defaultAreaPath(),
+    defaultAreaPath: (await deps.settings.get()).defaultAreaPath,
     stackRank: input.position === 'top' ? topRank(ranks) : bottomRank(ranks),
     context: session.context(),
   });
@@ -89,7 +92,7 @@ export async function createItem(
 
 /** Move an item to the recycle bin with its links. Its children stay, without a parent. */
 export async function removeItem(
-  deps: Pick<WorkItemDeps, 'items' | 'links' | 'recycleBin' | 'project'>,
+  deps: ReferenceDeps & Pick<WorkItemDeps, 'links' | 'recycleBin'>,
   session: ChangeSession,
   item: WorkItemAggregate,
 ): Promise<Result<void, WorkItemError>> {

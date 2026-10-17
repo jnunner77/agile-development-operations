@@ -16,6 +16,7 @@ import { RemoveHyperlink } from '#application/work-items/remove-hyperlink.ts';
 import { RemoveLink } from '#application/work-items/remove-link.ts';
 import { RestoreWorkItem } from '#application/work-items/restore-work-item.ts';
 import { UpdateWorkItem } from '#application/work-items/update-work-item.ts';
+import type { MemberId } from '#domain/team/member.ts';
 import { NOW, admin, ann, bo, setup, unwrap } from './fixtures.ts';
 
 describe('creating work items', () => {
@@ -203,7 +204,7 @@ describe('deleting and restoring', () => {
     const task = await t.create('Task', { parentId: pbi.id, iterationId: 's1', assignedTo: 'm2' });
     unwrap(await new DeleteWorkItem(t.deps).execute({ caller: ann, id: task.id }));
     unwrap(await new DeleteWorkItem(t.deps).execute({ caller: ann, id: pbi.id }));
-    t.project.members.delete('m2');
+    await t.members.delete('m2' as MemberId);
     const restored = unwrap(await new RestoreWorkItem(t.deps).execute({ caller: ann, id: task.id })).result;
     assert.equal(restored.parentId, null);
     assert.equal(restored.iterationId, 's1');

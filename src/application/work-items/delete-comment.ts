@@ -4,7 +4,7 @@ import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import type { WorkItemDeps } from './deps.ts';
 import { findItem, save } from './helpers.ts';
-import { runChange } from './session.ts';
+import { runChange } from '../session.ts';
 
 export interface DeleteCommentInput {
   readonly caller: Caller;
