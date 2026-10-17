@@ -32,11 +32,11 @@ afterEach(() => {
 });
 
 let delivery = 0;
-function deliver(event: string, payload: unknown, opts: { secret?: string; id?: string; target?: typeof app } = {}) {
+function deliver(event: string, payload: unknown, opts: { secret?: string; id?: string; target?: typeof app; requestPath?: string } = {}) {
   const body = JSON.stringify(payload);
   const sig = 'sha256=' + crypto.createHmac('sha256', opts.secret ?? secret).update(body).digest('hex');
   return request(opts.target ?? app)
-    .post('/api/integrations/github/webhook')
+    .post(opts.requestPath ?? '/api/integrations/github/webhook')
     .set('Content-Type', 'application/json')
     .set('X-GitHub-Event', event)
     .set('X-GitHub-Delivery', opts.id ?? `d-${++delivery}`)
@@ -150,7 +150,7 @@ describe('webhook security', () => {
     expect(item(1).devLinks).toHaveLength(1);
   });
 
-  it('works while sign-in is on, without a session', async () => {
+  it('accepts trailing-slash webhook requests without a session when sign-in is on', async () => {
     const auth = createAuth(store);
     const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
@@ -159,7 +159,10 @@ describe('webhook security', () => {
     expect((await request(signedIn).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
     await create('Task');
     expect((await request(signedIn).get('/api/integrations/github')).status).toBe(401);
-    const res = await deliver('create', { ref: 'wi/1-x', ref_type: 'branch', repository: REPO, sender: SENDER }, { target: signedIn });
+    const res = await deliver('create', { ref: 'wi/1-x', ref_type: 'branch', repository: REPO, sender: SENDER }, {
+      target: signedIn,
+      requestPath: '/api/integrations/github/webhook/',
+    });
     expect(res.status).toBe(200);
     expect(item(1).devLinks).toHaveLength(1);
   });

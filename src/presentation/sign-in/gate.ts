@@ -14,7 +14,7 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Reachable without signing in, so people can sign in, and GitHub can deliver webhooks (which are
  * signed instead). Paths are relative to /api.
  */
-const PUBLIC_PATHS = new Set(['/auth/status', '/auth/login', '/auth/password', '/auth/logout', '/integrations/github/webhook']);
+const PUBLIC_PATHS = new Set(['/auth/status', '/auth/login', '/auth/password', '/auth/logout', '/integrations/github/webhook', '/integrations/github/webhook/']);
 
 /**
  * With sign-in on, requests need a valid session; API tokens work whether or not it is on, and
