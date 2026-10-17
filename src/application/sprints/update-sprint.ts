@@ -4,7 +4,8 @@ import { ok, type Result } from '#shared/result.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import { runChange } from '../session.ts';
-import { findSprint, type SprintDeps } from './deps.ts';
+import { type SprintDeps } from './deps.ts';
+import { findSprint } from '../lookups.ts';
 
 export interface UpdateSprintInput extends SprintInput {
   readonly caller: Caller;

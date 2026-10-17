@@ -4,8 +4,8 @@ import { err, ok, type Result } from '#shared/result.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import { runChange } from '../session.ts';
-import { memberExists } from '../work-items/helpers.ts';
-import { findSprint, type SprintDeps, type SprintsError } from './deps.ts';
+import { type SprintDeps, type SprintsError } from './deps.ts';
+import { findSprint, memberExists } from '../lookups.ts';
 
 export interface SetCapacityInput extends CapacityInput {
   readonly caller: Caller;

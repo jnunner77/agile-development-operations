@@ -18,6 +18,7 @@ import {
   type AuthUser,
   type LoginResult,
 } from '#application/contracts/auth.ts';
+import type { AdminAccess } from '#application/caller.ts';
 import type { Database } from '#application/contracts/database.ts';
 import type { Member } from '#domain/types.ts';
 import { HttpError, badRequest, notFound } from './errors.ts';
@@ -488,10 +489,21 @@ export class AuthManager {
     return member;
   };
 
+  /**
+   * Whether this request may administer the project: never with an API token, and with sign-in on
+   * only as an administrator. With sign-in off anyone may. The layered routes get the same answer.
+   */
+  adminAccess(res: Response): AdminAccess {
+    if (res.locals.apiToken) return 'token';
+    if (this.enabled && !this.isAdmin((res.locals.authMember ?? null) as Member | null)) return 'not-admin';
+    return 'granted';
+  }
+
   /** Restrict a route to administrators while sign-in is on. With sign-in off anyone may use it. */
   requireAdmin = (_req: Request, res: Response, next: NextFunction) => {
-    if (res.locals.apiToken) throw tokenForbidden('administer the project');
-    if (this.enabled && !this.isAdmin(res.locals.authMember ?? null)) throw new HttpError(403, 'Only administrators can do this');
+    const access = this.adminAccess(res);
+    if (access === 'token') throw tokenForbidden('administer the project');
+    if (access === 'not-admin') throw new HttpError(403, 'Only administrators can do this');
     next();
   };
 

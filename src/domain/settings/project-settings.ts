@@ -10,7 +10,8 @@ export type SettingsError =
   | { readonly code: 'SETTING_REQUIRED'; readonly field: 'projectName' | 'teamName' | 'workingDays' | 'areaPaths' }
   | { readonly code: 'TEXT_TOO_LONG'; readonly field: 'projectName' | 'teamName' | 'areaPaths'; readonly max: number }
   | { readonly code: 'NUMBER_OUT_OF_RANGE'; readonly field: 'workingDays' | 'intervalHours' | 'retain'; readonly min: number; readonly max: number }
-  | { readonly code: 'NOT_AN_INTEGER'; readonly field: 'workingDays' | 'retain' };
+  | { readonly code: 'NOT_AN_INTEGER'; readonly field: 'workingDays' | 'retain' }
+  | { readonly code: 'TOO_MANY_WORKING_DAYS'; readonly max: number };
 
 export type SettingsEvent = { readonly type: 'SettingsChanged'; readonly fields: readonly string[]; readonly occurredAt: Date };
 
@@ -53,7 +54,7 @@ export class SettingsChanges {
     if (input.workingDays !== undefined) {
       const days = input.workingDays;
       if (days.length < 1) return err({ code: 'SETTING_REQUIRED', field: 'workingDays' });
-      if (days.length > 7) return err({ code: 'NUMBER_OUT_OF_RANGE', field: 'workingDays', min: 0, max: 6 });
+      if (days.length > 7) return err({ code: 'TOO_MANY_WORKING_DAYS', max: 7 });
       if (!days.every(Number.isInteger)) return err({ code: 'NOT_AN_INTEGER', field: 'workingDays' });
       if (days.some((d) => d < 0 || d > 6)) return err({ code: 'NUMBER_OUT_OF_RANGE', field: 'workingDays', min: 0, max: 6 });
       out.workingDays = [...new Set(days)].sort((a, b) => a - b);

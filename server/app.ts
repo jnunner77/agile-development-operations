@@ -164,8 +164,7 @@ export function createExpressApp({
       name: userName(store, req),
       memberId: callerId(store, req, res),
       mayModerateComments: !restricted || (!token && auth.isAdmin((res.locals.authMember ?? null) as Member | null)),
-      // The same rule as requireAdmin: tokens never, others when sign-in is off or they are admins.
-      admin: token ? 'token' : auth.enabled && !auth.isAdmin((res.locals.authMember ?? null) as Member | null) ? 'not-admin' : 'granted',
+      admin: auth.adminAccess(res),
       origin: req.header('x-client-id'),
     };
   };

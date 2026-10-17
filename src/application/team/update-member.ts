@@ -5,7 +5,8 @@ import { requireAdmin } from '../access.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import { runChange } from '../session.ts';
-import { checkAdminRemains, findMember, type TeamDeps, type TeamError } from './deps.ts';
+import { findMember } from '../lookups.ts';
+import { checkAdminRemains, type TeamDeps, type TeamError } from './deps.ts';
 
 export interface UpdateMemberInput extends MemberInput {
   readonly caller: Caller;

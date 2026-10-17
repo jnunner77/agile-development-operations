@@ -7,9 +7,8 @@ import { toWorkItemId } from '#domain/work-items/ids.ts';
 import { bottomRank, topRank } from '#domain/work-items/ranking.ts';
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
 import type { WorkItemType } from '#domain/process.ts';
-import { toSprintId } from '#domain/sprints/sprint.ts';
-import { toMemberId } from '#domain/team/member.ts';
 import { err, ok, type Result } from '#shared/result.ts';
+import { memberExists, sprintExists } from '../lookups.ts';
 import type { WorkItemDeps, WorkItemsError } from './deps.ts';
 import type { ChangeSession } from '../session.ts';
 
@@ -23,16 +22,6 @@ export async function findItem(deps: Pick<WorkItemDeps, 'items'>, rawId: number)
 }
 
 type ReferenceDeps = Pick<WorkItemDeps, 'items' | 'sprints' | 'members'>;
-
-export async function sprintExists(deps: Pick<WorkItemDeps, 'sprints'>, rawId: string): Promise<boolean> {
-  const id = toSprintId(rawId);
-  return id.ok && !!(await deps.sprints.findById(id.value));
-}
-
-export async function memberExists(deps: Pick<WorkItemDeps, 'members'>, rawId: string): Promise<boolean> {
-  const id = toMemberId(rawId);
-  return id.ok && !!(await deps.members.findById(id.value));
-}
 
 /** Check that the sprint, member and parent a change points at exist and fit. Returns the parent. */
 export async function checkReferences(

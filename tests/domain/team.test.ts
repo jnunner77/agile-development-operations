@@ -77,6 +77,7 @@ describe('project settings', () => {
   it('refuse values out of range', () => {
     assert.deepEqual(SettingsChanges.validate({ teamName: ' ' }), { ok: false, error: { code: 'SETTING_REQUIRED', field: 'teamName' } });
     assert.deepEqual(SettingsChanges.validate({ workingDays: [] }), { ok: false, error: { code: 'SETTING_REQUIRED', field: 'workingDays' } });
+    assert.deepEqual(SettingsChanges.validate({ workingDays: [1, 1, 1, 1, 1, 1, 1, 1] }), { ok: false, error: { code: 'TOO_MANY_WORKING_DAYS', max: 7 } });
     assert.deepEqual(SettingsChanges.validate({ workingDays: [7] }), { ok: false, error: { code: 'NUMBER_OUT_OF_RANGE', field: 'workingDays', min: 0, max: 6 } });
     assert.deepEqual(SettingsChanges.validate({ areaPaths: [] }), { ok: false, error: { code: 'SETTING_REQUIRED', field: 'areaPaths' } });
     assert.deepEqual(SettingsChanges.validate({ backup: { autoEnabled: true, intervalHours: 0.5, retain: 3 } }), {

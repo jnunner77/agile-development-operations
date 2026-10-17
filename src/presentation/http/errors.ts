@@ -110,6 +110,8 @@ export function httpFailure(error: AppError): HttpFailure {
       return { status: 400, message: 'Color must be a hex color like #0078d4' };
     case 'LAST_ADMIN':
       return { status: 400, message: LAST_ADMIN };
+    case 'TOO_MANY_WORKING_DAYS':
+      return { status: 400, message: `A week has at most ${error.max} working days` };
     case 'SETTING_REQUIRED':
       switch (error.field) {
         case 'workingDays':

@@ -4,7 +4,8 @@ import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import { runChange } from '../session.ts';
 import { editItem } from '../work-items/helpers.ts';
-import { findSprint, type SprintDeps, type SprintsError } from './deps.ts';
+import { type SprintDeps, type SprintsError } from './deps.ts';
+import { findSprint } from '../lookups.ts';
 
 export interface DeleteSprintInput {
   readonly caller: Caller;
