@@ -4,7 +4,9 @@ import type { SettingsRepository } from '#domain/settings/repository.ts';
 import type { CapacityRepository, SprintRepository } from '#domain/sprints/repository.ts';
 import type { MemberRepository } from '#domain/team/repository.ts';
 import type { WorkItemRepository } from '#domain/work-items/repository.ts';
-import type { AdminSafeguard, Clock, EventPublisher, IdGenerator, UnitOfWork } from './ports.ts';
+import type { ApiTokenRepository } from '#domain/api-tokens/repository.ts';
+import type { AccountRepository, FailedAttemptsRepository, SessionRepository, SignInSettingsRepository } from '#domain/sign-in/repository.ts';
+import type { Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
 
 /** Everything the use cases can depend on. Each module takes the part it needs. */
 export interface AppDeps {
@@ -15,7 +17,18 @@ export interface AppDeps {
   readonly capacities: CapacityRepository;
   readonly members: MemberRepository;
   readonly settings: SettingsRepository;
-  readonly safeguard: AdminSafeguard;
+  readonly accounts: AccountRepository;
+  readonly signInSettings: SignInSettingsRepository;
+  readonly sessions: SessionRepository;
+  readonly failedAttempts: FailedAttemptsRepository;
+  readonly apiTokens: ApiTokenRepository;
+  readonly team: TeamDirectory;
+  readonly hasher: PasswordHasher;
+  readonly secrets: Secrets;
+  /** Account, settings and token changes run one at a time. */
+  readonly signInWrites: SerialWrites;
+  /** Sign-in is forced off (AUTH_DISABLED), whatever its settings say: recovery if every admin is locked out. */
+  readonly signInForcedOff: boolean;
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly events: EventPublisher;

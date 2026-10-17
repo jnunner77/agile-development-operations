@@ -9,7 +9,8 @@ import { UpdateSprint } from '#application/sprints/update-sprint.ts';
 import { CreateMember } from '#application/team/create-member.ts';
 import { DeleteMember } from '#application/team/delete-member.ts';
 import { UpdateMember } from '#application/team/update-member.ts';
-import { ann, bo, setup, tokenCaller, unwrap } from './fixtures.ts';
+import { SignInSettingsChanges } from '#domain/sign-in/settings.ts';
+import { NOW, ann, bo, setup, tokenCaller, unwrap } from './fixtures.ts';
 
 const plan = (memberId: string, hours: number, daysOff: { start: string; end: string }[] = []) => ({
   teamDaysOff: [],
@@ -129,7 +130,16 @@ describe('team members', () => {
   it('keep an administrator who can sign in', async () => {
     const t = setup();
     const w = await t.create('Task', { assignedTo: 'm1' });
-    t.safeguard.allows = false;
+    unwrap(await new UpdateMember(t.deps).execute({ caller: ann, id: 'm1', username: 'ann' }));
+    const account = await t.accounts.get('m1');
+    account.setAdmin(true, NOW);
+    account.setPassword('hashed:correct horse', NOW, false);
+    await t.accounts.save(account);
+    const settings = await t.signInSettings.get();
+    const on = SignInSettingsChanges.validate({ enabled: true });
+    assert.ok(on.ok);
+    assert.ok(settings.update(on.value, true, NOW).ok);
+    await t.signInSettings.save(settings);
     assert.deepEqual(await new DeleteMember(t.deps).execute({ caller: ann, id: 'm1' }), { ok: false, error: { code: 'LAST_ADMIN' } });
     assert.deepEqual(await new UpdateMember(t.deps).execute({ caller: ann, id: 'm1', active: false }), { ok: false, error: { code: 'LAST_ADMIN' } });
     assert.equal(t.item(w.id).assignedTo, 'm1');

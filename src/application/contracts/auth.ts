@@ -1,25 +1,12 @@
 /** Types shared by the server's sign-in system and the client screens that use it. */
 
-export interface AuthSettings {
-  /** When false the app works as before: anyone can pick who they are acting as. */
-  enabled: boolean;
-  /** Days before a password must be changed. 0 means passwords never expire. */
-  passwordExpiryDays: number;
-  /** Minutes of inactivity before a signed-in user is signed out. */
-  sessionTimeoutMinutes: number;
-}
+import type { SignInSettingsData } from '#domain/sign-in/settings.ts';
 
-export const DEFAULT_AUTH_SETTINGS: AuthSettings = {
-  enabled: false,
-  passwordExpiryDays: 60,
-  sessionTimeoutMinutes: 60,
-};
+export { DEFAULT_SIGN_IN_SETTINGS as DEFAULT_AUTH_SETTINGS, EXPIRY_DAYS_MAX, SESSION_TIMEOUT_MAX, SESSION_TIMEOUT_MIN } from '#domain/sign-in/settings.ts';
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '#domain/sign-in/password.ts';
+export type { ApiTokenInfo, ApiTokenScope } from '#domain/api-tokens/api-token.ts';
 
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 256;
-export const EXPIRY_DAYS_MAX = 3650;
-export const SESSION_TIMEOUT_MIN = 5;
-export const SESSION_TIMEOUT_MAX = 7 * 24 * 60;
+export type AuthSettings = SignInSettingsData;
 
 /** The signed-in user as the client sees them. */
 export interface AuthUser {
@@ -67,21 +54,4 @@ export interface AuthAdminView {
   settings: AuthSettings;
   overridden: boolean;
   accounts: AccountSummary[];
-}
-
-export type ApiTokenScope = 'read' | 'write';
-
-/** An API token as shown in settings. The secret itself is only returned once, when created. */
-export interface ApiTokenInfo {
-  id: string;
-  name: string;
-  memberId: string;
-  scope: ApiTokenScope;
-  /** Start of the token, so people can tell tokens apart. */
-  prefix: string;
-  createdAt: string;
-  createdBy: string;
-  expiresAt: string;
-  lastUsedAt: string | null;
-  expired: boolean;
 }

@@ -121,6 +121,56 @@ export function httpFailure(error: AppError): HttpFailure {
         default:
           return { status: 400, message: `${label(error.field)} is required` };
       }
+
+    // Sign-in
+    case 'SIGN_IN_OFF':
+      return { status: 400, message: 'Sign-in is not turned on' };
+    case 'SIGN_IN_LOCKED':
+      return { status: 429, message: `Too many failed sign-in attempts. Try again in ${error.minutes} minute${error.minutes === 1 ? '' : 's'}.` };
+    case 'INVALID_CREDENTIALS':
+      return { status: 401, message: 'Incorrect username or password' };
+    case 'WRONG_CURRENT_PASSWORD':
+      return { status: 401, message: 'Current password is incorrect' };
+    case 'PASSWORD_UNCHANGED':
+      return { status: 400, message: 'Choose a password different from the current one' };
+    case 'PASSWORD_CHANGED_MEANWHILE':
+      return { status: 409, message: 'The password was just changed. Sign in again.' };
+    case 'PASSWORD_TOO_SHORT':
+      return { status: 400, message: `Passwords must be at least ${error.min} characters` };
+    case 'PASSWORD_TOO_LONG':
+      return { status: 400, message: `Passwords can be at most ${error.max} characters` };
+    case 'PASSWORD_IS_USERNAME':
+      return { status: 400, message: "A password can't be the same as the username" };
+    case 'USERNAME_REQUIRED':
+      return { status: 400, message: 'Enter your username' };
+    case 'USERNAME_MISSING':
+      return { status: 400, message: `Give ${error.name} a username in Team members first` };
+    case 'SIGN_IN_NEEDS_ADMIN':
+      return {
+        status: 400,
+        message: 'Before turning on sign-in, make at least one active team member with a username an administrator and give them a password (Set password…).',
+      };
+    case 'ACCOUNT_IS_LAST_ADMIN':
+      return { status: 400, message: 'At least one active administrator with a username and a password must remain while sign-in is on.' };
+
+    // API tokens
+    case 'TOKEN_NAME_REQUIRED':
+      return { status: 400, message: 'Give the token a name' };
+    case 'UNKNOWN_TOKEN_SCOPE':
+      return { status: 400, message: 'A token is read-only ("read") or read & write ("write")' };
+    case 'TOKEN_NOT_FOUND':
+      return { status: 404, message: 'Token not found' };
+    case 'TOKEN_MEMBER_REQUIRED':
+      return { status: 400, message: 'Choose the team member the token acts as' };
+    case 'TOKEN_MEMBER_INACTIVE':
+      return { status: 400, message: `${error.name} is inactive` };
+    case 'TOKEN_LIMIT_REACHED':
+      return { status: 400, message: `${error.name} already has ${error.max} active tokens. Revoke some first.` };
+    case 'TOKEN_FOR_SOMEONE_ELSE':
+      return {
+        status: 403,
+        message: error.action === 'create' ? 'Only administrators can create tokens for someone else' : "Only administrators can revoke someone else's token",
+      };
     case 'ADMIN_ONLY':
       return {
         status: 403,

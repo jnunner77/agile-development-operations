@@ -6,11 +6,14 @@ import type { DomainEvent } from '#domain/events.ts';
 import type { WorkItem } from '#domain/types.ts';
 import { MemoryLinkRepository } from '#infrastructure/memory/link-repository.ts';
 import { MemoryMemberRepository } from '#infrastructure/memory/member-repository.ts';
+import { MemoryAccountRepository, MemoryApiTokenRepository, MemorySignInSettingsRepository } from '#infrastructure/memory/sign-in.ts';
+import { MemoryFailedAttemptsRepository, MemorySessionRepository } from '#infrastructure/sign-in/memory-sessions.ts';
 import { MemorySettingsRepository } from '#infrastructure/memory/settings-repository.ts';
 import { MemoryCapacityRepository, MemorySprintRepository } from '#infrastructure/memory/sprint-repository.ts';
 import type { Member, Sprint } from '#domain/types.ts';
 import { MemoryRecycleBinRepository } from '#infrastructure/memory/recycle-bin-repository.ts';
 import { MemoryUnitOfWork } from '#infrastructure/memory/unit-of-work.ts';
+import { SerialQueue } from '#infrastructure/serial-writes.ts';
 import { MemoryWorkItemRepository } from '#infrastructure/memory/work-item-repository.ts';
 import type { Result } from '#shared/result.ts';
 
@@ -33,8 +36,13 @@ export function setup() {
   const members = new MemoryMemberRepository([member('m1', 'Ann'), member('m2', 'Bo'), member('m3', 'Admin')]);
   const settings = new MemorySettingsRepository();
   const unitOfWork = new MemoryUnitOfWork([items, links, recycleBin, sprints, capacities, members, settings]);
-  /** Whether the sign-in safeguard lets a change through; tests turn it off. */
-  const safeguard = { allows: true };
+  const accounts = new MemoryAccountRepository();
+  const signInSettings = new MemorySignInSettingsRepository();
+  const apiTokens = new MemoryApiTokenRepository();
+  const failedAttempts = new MemoryFailedAttemptsRepository();
+  /** Moves sign-in's clock; tests step it to expire sessions, lockouts and passwords. */
+  const clock = { at: NOW.getTime() };
+  let secret = 0;
   const published: DomainEvent[] = [];
   let n = 0;
   const deps: AppDeps = {
@@ -45,8 +53,26 @@ export function setup() {
     capacities,
     members,
     settings,
-    safeguard: { keepsUsableAdmin: async () => safeguard.allows },
-    clock: { now: () => NOW },
+    accounts,
+    signInSettings,
+    sessions: new MemorySessionRepository(),
+    failedAttempts,
+    apiTokens,
+    team: { all: async () => members.rows(), findById: async (id) => members.rows().find((m) => m.id === id) },
+    // A stand-in for scrypt: reversible, and fine for tests only.
+    hasher: {
+      hash: async (password) => `hashed:${password}`,
+      verify: async (password, stored) => stored === `hashed:${password}`,
+      verifyNothing: async () => undefined,
+    },
+    secrets: {
+      newSessionToken: () => `session-${++secret}`,
+      newApiToken: () => `boards_secret${++secret}`,
+      digest: (s) => `digest:${s}`,
+    },
+    signInWrites: new SerialQueue(),
+    signInForcedOff: false,
+    clock: { now: () => new Date(clock.at) },
     ids: { next: () => `id-${++n}` },
     events: {
       publish: async (events) => {
@@ -65,7 +91,7 @@ export function setup() {
     assert.ok(result.ok, JSON.stringify(result));
     return result.value.result;
   };
-  return { deps, items, links, recycleBin, sprints, capacities, members, settings, safeguard, unitOfWork, published, item, create };
+  return { deps, items, links, recycleBin, sprints, capacities, members, settings, accounts, signInSettings, apiTokens, failedAttempts, clock, unitOfWork, published, item, create };
 }
 
 export function unwrap<T, E>(result: Result<T, E>): T {

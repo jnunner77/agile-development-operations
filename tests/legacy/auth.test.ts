@@ -3,8 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../../src/compose.ts';
-import { AuthManager } from '../../server/auth.ts';
+import { createApp, createAuth, type Auth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
@@ -13,7 +12,7 @@ const DAY = 86_400_000;
 
 let dir: string;
 let store: Store;
-let auth: AuthManager;
+let auth: Auth;
 let app: ReturnType<typeof createApp>;
 let clock: number;
 
@@ -21,7 +20,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-auth-'));
   store = new Store(dir, () => emptyDatabase());
   clock = Date.parse('2026-01-01T09:00:00Z');
-  auth = new AuthManager(store, { now: () => clock });
+  auth = createAuth(store, { now: () => clock });
   // Rate limits are covered in security.test.ts; these tests make many attempts from one IP.
   app = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
 });
@@ -264,7 +263,7 @@ describe('sign-in', () => {
   it('can be forced off for recovery', async () => {
     await setup();
     const recovery = new Store(dir, () => emptyDatabase());
-    const forced = createApp({ store: recovery, snapshots: new SnapshotManager(recovery), auth: new AuthManager(recovery, { disabled: true }) });
+    const forced = createApp({ store: recovery, snapshots: new SnapshotManager(recovery), auth: createAuth(recovery, { disabled: true }) });
     expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
     expect((await request(forced).get('/api/bootstrap')).status).toBe(200);
   });
@@ -272,7 +271,7 @@ describe('sign-in', () => {
   it('can only be saved as on, even while forced off, when an administrator has a password', async () => {
     const ada = await member('Ada Admin', 'ada');
     await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
-    const forcedAuth = new AuthManager(store, { disabled: true });
+    const forcedAuth = createAuth(store, { disabled: true });
     const forced = createApp({ store, snapshots: new SnapshotManager(store), auth: forcedAuth, security: false });
     const res = await request(forced).put('/api/auth/settings').send({ enabled: true });
     expect(res.status).toBe(400);

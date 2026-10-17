@@ -6,11 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 import { LocalEventBus } from '#infrastructure/local-event-bus.ts';
-import { AuthManager } from '../server/auth.ts';
 import { buildDemoDatabase } from '../server/seed.ts';
 import { Security } from '../server/security.ts';
 import { SnapshotManager } from '../server/snapshots.ts';
-import { createApp } from './compose.ts';
+import { createApp, createAuth } from './compose.ts';
 
 const env = process.env;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,7 +23,7 @@ snapshots.startScheduler();
 
 // AUTH_DISABLED=1 forces sign-in off, e.g. to recover if every administrator is locked out.
 const authDisabled = /^(1|true|yes)$/i.test(env['AUTH_DISABLED'] ?? '');
-const auth = new AuthManager(store, { disabled: authDisabled });
+const auth = createAuth(store, { disabled: authDisabled });
 if (authDisabled) console.warn('AUTH_DISABLED is set: sign-in is turned off and anyone can use the app.');
 
 // SECURITY_ALLOWLIST: comma-separated IPs or IPv4 CIDR ranges never rate limited or blocked

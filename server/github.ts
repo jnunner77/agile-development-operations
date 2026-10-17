@@ -120,7 +120,7 @@ export class GitHubIntegration {
   }
 
   /** Handle one verified webhook delivery. Returns a short description of what happened. */
-  handle(event: string, deliveryId: string, payload: Record<string, unknown>): { result: string; linked: number[] } {
+  async handle(event: string, deliveryId: string, payload: Record<string, unknown>): Promise<{ result: string; linked: number[] }> {
     const repo = (payload.repository as Repo | undefined)?.full_name ?? '';
     const allowed = this.data.github.repositories;
     if (allowed.length && !allowed.some((r) => r.toLowerCase() === repo.toLowerCase())) {
@@ -132,17 +132,17 @@ export class GitHubIntegration {
         outcome = { result: 'Ping received — the webhook is connected', linked: [] };
         break;
       case 'push':
-        outcome = this.store.transact(actor(payload), undefined, (tx) => this.onPush(tx, payload)).result;
+        outcome = (await this.store.transactSerial(actor(payload), undefined, (tx) => this.onPush(tx, payload))).result;
         break;
       case 'create':
       case 'delete':
-        outcome = this.store.transact(actor(payload), undefined, (tx) => this.onBranch(tx, event, payload)).result;
+        outcome = (await this.store.transactSerial(actor(payload), undefined, (tx) => this.onBranch(tx, event, payload))).result;
         break;
       case 'pull_request':
-        outcome = this.store.transact(actor(payload), undefined, (tx) => this.onPullRequest(tx, payload)).result;
+        outcome = (await this.store.transactSerial(actor(payload), undefined, (tx) => this.onPullRequest(tx, payload))).result;
         break;
       case 'check_suite':
-        outcome = this.store.transact(actor(payload), undefined, (tx) => this.onCheckSuite(tx, payload)).result;
+        outcome = (await this.store.transactSerial(actor(payload), undefined, (tx) => this.onCheckSuite(tx, payload))).result;
         break;
       default:
         outcome = { result: `Ignored event "${event}"`, linked: [] };
@@ -316,7 +316,7 @@ export class GitHubIntegration {
   };
 
   /** Public webhook endpoint (authenticated by signature, not by session). */
-  webhook = (req: Request, res: Response) => {
+  webhook = async (req: Request, res: Response) => {
     if (!this.data.github.enabled || !this.data.github.secret) throw notFound('Webhook');
     const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (!this.verify(body, req.get('x-hub-signature-256'))) throw new HttpError(401, 'Invalid signature');
@@ -330,7 +330,7 @@ export class GitHubIntegration {
       throw new HttpError(400, 'Payload must be JSON (set the webhook content type to application/json)');
     }
     try {
-      const outcome = this.handle(event, deliveryId, payload);
+      const outcome = await this.handle(event, deliveryId, payload);
       // Remember the delivery only once it has been handled, so GitHub's "Redeliver" (which
       // reuses the delivery id) can retry one that failed.
       this.seen.add(deliveryId);

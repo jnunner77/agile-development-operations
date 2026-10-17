@@ -4,8 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp } from '../../src/compose.ts';
-import { AuthManager } from '../../server/auth.ts';
+import { createApp, createAuth } from '../../src/compose.ts';
 import { GitHubIntegration } from '../../server/github.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { SnapshotManager } from '../../server/snapshots.ts';
@@ -153,7 +152,7 @@ describe('webhook security', () => {
   });
 
   it('works while sign-in is on, without a session', async () => {
-    const auth = new AuthManager(store);
+    const auth = createAuth(store);
     const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false, github: new GitHubIntegration(store) });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
     await request(signedIn).patch(`/api/auth/accounts/${member.id}`).send({ isAdmin: true });

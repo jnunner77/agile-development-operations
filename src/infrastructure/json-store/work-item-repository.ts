@@ -73,9 +73,8 @@ export class JsonWorkItemRepository implements WorkItemRepository {
     if (idx !== undefined) {
       tx.db.workItems.splice(idx, 1);
       index.delete(id);
-      for (let i = idx; i < tx.db.workItems.length; i += 1) {
-        index.set(tx.db.workItems[i]!.id, i);
-      }
+      // Rows after the removed one each moved up a place.
+      for (const [offset, row] of tx.db.workItems.slice(idx).entries()) index.set(row.id, idx + offset);
     }
     tx.deletedItems.add(id);
   }

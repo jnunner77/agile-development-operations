@@ -3,6 +3,10 @@ import path from 'node:path';
 import type { Database, Delta } from '#application/contracts/database.ts';
 import { err, ok, type Result } from '#shared/result.ts';
 import { emptyDatabase, normalizeDatabase } from './schema.ts';
+import { SerialQueue } from '../serial-writes.ts';
+
+/** A store guard refused a change; the HTTP layer answers 400 with the message. */
+export class RejectedChangeError extends Error {}
 
 /** A record a mutation looked up doesn't exist. The HTTP layer answers 404 "<what> not found". */
 export class MissingRecordError extends Error {
@@ -83,8 +87,8 @@ export class Store {
   private readonly file: string;
   private readonly listeners = new Set<DeltaListener>();
   private readonly guards: ((db: Database) => void)[] = [];
-  /** Asynchronous transactions run one at a time, in order. */
-  private queue: Promise<unknown> = Promise.resolve();
+  /** Database commits and sign-in safeguards share one serialization boundary. */
+  readonly writes = new SerialQueue();
 
   constructor(dataDir: string, init: () => Database = () => emptyDatabase()) {
     this.dataDir = dataDir;
@@ -139,6 +143,11 @@ export class Store {
     return { delta: this.commit(tx, origin), result };
   }
 
+  /** A synchronous mutation run in the shared database/authentication write queue. */
+  transactSerial<T>(user: string, origin: string | undefined, fn: (tx: Tx) => T): Promise<{ delta: Delta; result: T }> {
+    return this.writes.run(async () => this.transact(user, origin, fn));
+  }
+
   /**
    * Run asynchronous work against a working copy, one transaction at a time. The copy is
    * committed, persisted and broadcast only if the work returns ok; on an error result or a
@@ -158,9 +167,7 @@ export class Store {
       if (this.db !== base) throw new Error('The database changed while an asynchronous transaction was running');
       return ok({ result: result.value, delta: this.commit(tx, origin) });
     };
-    const next = this.queue.then(run, run);
-    this.queue = next.catch(() => undefined);
-    return next;
+    return this.writes.run(run);
   }
 
   private commit(tx: Tx, origin: string | undefined): Delta {
@@ -186,4 +193,5 @@ export class Store {
     this.emit(delta, origin);
     return delta;
   }
+
 }

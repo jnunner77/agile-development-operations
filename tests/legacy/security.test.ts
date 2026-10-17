@@ -3,8 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../../src/compose.ts';
-import { AuthManager } from '../../server/auth.ts';
+import { createApp, createAuth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Security, TokenBucket, type SecurityOptions } from '../../server/security.ts';
 import { SnapshotManager } from '../../server/snapshots.ts';
@@ -25,7 +24,7 @@ afterEach(() => {
 });
 
 function build(options: Partial<SecurityOptions> = {}) {
-  const auth = new AuthManager(store, { now: () => clock });
+  const auth = createAuth(store, { now: () => clock });
   const security = new Security(options, () => clock);
   const app = createApp({ store, snapshots: new SnapshotManager(store), auth, security, trustProxy: 1 });
   return { app, auth, security };

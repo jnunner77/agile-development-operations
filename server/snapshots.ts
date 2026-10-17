@@ -103,21 +103,25 @@ export class SnapshotManager {
 
   /** Restore a snapshot, first saving the current state so the restore can be undone. */
   restore(id: string, user: string, origin?: string) {
-    const snap = this.read(id);
-    const data = normalizeDatabase(snap.data);
-    this.store.check(data);
-    const safety = this.create(`Before restoring "${snap.meta.name}"`, 'Automatic safety snapshot taken before a restore', 'pre-restore', user);
-    this.store.replace(data, origin);
-    return safety;
+    return this.store.writes.run(async () => {
+      const snap = this.read(id);
+      const data = normalizeDatabase(snap.data);
+      this.store.check(data);
+      const safety = this.create(`Before restoring "${snap.meta.name}"`, 'Automatic safety snapshot taken before a restore', 'pre-restore', user);
+      this.store.replace(data, origin);
+      return safety;
+    });
   }
 
   /** Import a backup file (full export or snapshot file) after taking a safety snapshot. */
   import(raw: unknown, user: string, origin?: string) {
-    const data = normalizeDatabase(raw);
-    this.store.check(data);
-    const safety = this.create('Before import', 'Automatic safety snapshot taken before importing a backup', 'pre-import', user);
-    this.store.replace(data, origin);
-    return safety;
+    return this.store.writes.run(async () => {
+      const data = normalizeDatabase(raw);
+      this.store.check(data);
+      const safety = this.create('Before import', 'Automatic safety snapshot taken before importing a backup', 'pre-import', user);
+      this.store.replace(data, origin);
+      return safety;
+    });
   }
 
   /** Keep only the newest `retain` automatic snapshots. */
