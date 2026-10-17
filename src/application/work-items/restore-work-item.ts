@@ -6,8 +6,8 @@ import { err, ok, type Result } from '#shared/result.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import type { WorkItemDeps } from './deps.ts';
-import { save } from './helpers.ts';
-import { runChange } from './session.ts';
+import { memberExists, save, sprintExists } from './helpers.ts';
+import { runChange } from '../session.ts';
 
 export interface RestoreWorkItemInput {
   readonly caller: Caller;
@@ -26,7 +26,7 @@ export class RestoreWorkItem {
     const id = toWorkItemId(input.id);
     if (!id.ok) return id;
     return runChange(this.#deps, input.caller, async (session) => {
-      const { items, links, recycleBin, project } = this.#deps;
+      const { items, links, recycleBin } = this.#deps;
       const entry = await recycleBin.findById(id.value);
       if (!entry) return err({ code: 'DELETED_WORK_ITEM_NOT_FOUND', id: input.id });
       await recycleBin.remove(id.value);
@@ -36,8 +36,8 @@ export class RestoreWorkItem {
       for (const linked of refs.linkedItemIds) if (await items.findById(linked)) existingItemIds.add(linked);
       const restored = entry.restore({
         parent: refs.parentId != null && !!(await items.findById(refs.parentId)),
-        sprint: !!refs.iterationId && (await project.sprintExists(refs.iterationId)),
-        member: !!refs.assignedTo && (await project.memberExists(refs.assignedTo)),
+        sprint: !!refs.iterationId && (await sprintExists(this.#deps, refs.iterationId)),
+        member: !!refs.assignedTo && (await memberExists(this.#deps, refs.assignedTo)),
         existingItemIds,
         context: session.context(),
       });

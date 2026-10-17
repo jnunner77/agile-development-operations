@@ -6,7 +6,7 @@ import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import type { WorkItemDeps, WorkItemsError } from './deps.ts';
 import { linkItems } from './helpers.ts';
-import { runChange } from './session.ts';
+import { runChange } from '../session.ts';
 
 export interface AddLinkInput {
   readonly caller: Caller;

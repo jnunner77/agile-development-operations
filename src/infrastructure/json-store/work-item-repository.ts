@@ -1,6 +1,9 @@
+import type { SprintId } from '#domain/sprints/sprint.ts';
+import type { MemberId } from '#domain/team/member.ts';
 import type { WorkItemId } from '#domain/work-items/ids.ts';
 import type { RankEntry, WorkItemRepository } from '#domain/work-items/repository.ts';
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
+import type { WorkItem } from '#domain/types.ts';
 import type { CurrentTransaction } from './unit-of-work.ts';
 
 /** Work items in the JSON store, read from and written to the running unit of work. */
@@ -30,6 +33,18 @@ export class JsonWorkItemRepository implements WorkItemRepository {
       .current()
       .db.workItems.filter((w) => w.parentId === parentId)
       .map((w) => WorkItemAggregate.reconstitute(w));
+  }
+
+  async findInSprint(sprintId: SprintId): Promise<WorkItemAggregate[]> {
+    return this.#where((w) => w.iterationId === sprintId);
+  }
+
+  async findAssignedTo(memberId: MemberId): Promise<WorkItemAggregate[]> {
+    return this.#where((w) => w.assignedTo === memberId);
+  }
+
+  #where(match: (row: WorkItem) => boolean): WorkItemAggregate[] {
+    return this.#tx.current().db.workItems.filter(match).map((w) => WorkItemAggregate.reconstitute(w));
   }
 
   async ranks(): Promise<RankEntry[]> {

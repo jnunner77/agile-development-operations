@@ -1,6 +1,6 @@
 {
-  // The Express server for the slices not yet moved into the layers (sprints, team, settings,
-  // sign-in, tokens, GitHub, snapshots). It sits outside the onion and may use every layer.
+  // The Express server for the slices not yet moved into the layers (sign-in, tokens, GitHub,
+  // snapshots and backups). It sits outside the onion and may use every layer.
   // Its code predates the stricter checks below, so they are relaxed for it.
   "extends": "../tsconfig.base.json",
   "compilerOptions": {

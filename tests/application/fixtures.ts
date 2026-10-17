@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import type { Caller } from '#application/caller.ts';
-import type { WorkItemDeps } from '#application/work-items/deps.ts';
+import type { AppDeps } from '#application/deps.ts';
 import { CreateWorkItem } from '#application/work-items/create-work-item.ts';
 import type { DomainEvent } from '#domain/events.ts';
 import type { WorkItem } from '#domain/types.ts';
 import { MemoryLinkRepository } from '#infrastructure/memory/link-repository.ts';
-import { MemoryProjectDirectory } from '#infrastructure/memory/project-directory.ts';
+import { MemoryMemberRepository } from '#infrastructure/memory/member-repository.ts';
+import { MemorySettingsRepository } from '#infrastructure/memory/settings-repository.ts';
+import { MemoryCapacityRepository, MemorySprintRepository } from '#infrastructure/memory/sprint-repository.ts';
+import type { Member, Sprint } from '#domain/types.ts';
 import { MemoryRecycleBinRepository } from '#infrastructure/memory/recycle-bin-repository.ts';
 import { MemoryUnitOfWork } from '#infrastructure/memory/unit-of-work.ts';
 import { MemoryWorkItemRepository } from '#infrastructure/memory/work-item-repository.ts';
@@ -13,23 +16,36 @@ import type { Result } from '#shared/result.ts';
 
 export const NOW = new Date('2026-03-02T10:00:00.000Z');
 
-export const ann: Caller = { name: 'Ann', memberId: 'm1', mayModerateComments: false, origin: 'tab-1' };
-export const bo: Caller = { name: 'Bo', memberId: 'm2', mayModerateComments: false, origin: undefined };
-export const admin: Caller = { name: 'Admin', memberId: 'm3', mayModerateComments: true, origin: undefined };
+export const ann: Caller = { name: 'Ann', memberId: 'm1', mayModerateComments: false, admin: 'granted', origin: 'tab-1' };
+export const bo: Caller = { name: 'Bo', memberId: 'm2', mayModerateComments: false, admin: 'not-admin', origin: undefined };
+export const admin: Caller = { name: 'Admin', memberId: 'm3', mayModerateComments: true, admin: 'granted', origin: undefined };
+export const tokenCaller: Caller = { name: 'Bot', memberId: 'm1', mayModerateComments: false, admin: 'token', origin: undefined };
+
+const member = (id: string, name: string): Member => ({ id, name, username: '', email: '', color: '#0078d4', active: true });
+const sprint = (id: string, name: string, startDate: string | null = null, finishDate: string | null = null): Sprint => ({ id, name, startDate, finishDate, goal: '' });
 
 export function setup() {
   const items = new MemoryWorkItemRepository();
   const links = new MemoryLinkRepository();
   const recycleBin = new MemoryRecycleBinRepository();
-  const project = new MemoryProjectDirectory({ members: ['m1', 'm2', 'm3'], sprints: ['s1', 's2'] });
-  const unitOfWork = new MemoryUnitOfWork([items, links, recycleBin]);
+  const sprints = new MemorySprintRepository([sprint('s1', 'Sprint 1', '2026-01-05', '2026-01-16'), sprint('s2', 'Sprint 2', '2026-01-19', '2026-01-30')]);
+  const capacities = new MemoryCapacityRepository();
+  const members = new MemoryMemberRepository([member('m1', 'Ann'), member('m2', 'Bo'), member('m3', 'Admin')]);
+  const settings = new MemorySettingsRepository();
+  const unitOfWork = new MemoryUnitOfWork([items, links, recycleBin, sprints, capacities, members, settings]);
+  /** Whether the sign-in safeguard lets a change through; tests turn it off. */
+  const safeguard = { allows: true };
   const published: DomainEvent[] = [];
   let n = 0;
-  const deps: WorkItemDeps = {
+  const deps: AppDeps = {
     items,
     links,
     recycleBin,
-    project,
+    sprints,
+    capacities,
+    members,
+    settings,
+    safeguard: { keepsUsableAdmin: async () => safeguard.allows },
     clock: { now: () => NOW },
     ids: { next: () => `id-${++n}` },
     events: {
@@ -49,7 +65,7 @@ export function setup() {
     assert.ok(result.ok, JSON.stringify(result));
     return result.value.result;
   };
-  return { deps, items, links, recycleBin, project, unitOfWork, published, item, create };
+  return { deps, items, links, recycleBin, sprints, capacities, members, settings, safeguard, unitOfWork, published, item, create };
 }
 
 export function unwrap<T, E>(result: Result<T, E>): T {

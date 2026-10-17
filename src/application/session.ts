@@ -1,18 +1,18 @@
 import type { DomainEvent } from '#domain/events.ts';
 import type { ChangeContext } from '#domain/work-items/work-item.ts';
 import type { Result } from '#shared/result.ts';
-import type { Caller } from '../caller.ts';
-import type { Committed } from '../ports.ts';
-import type { WorkItemDeps } from './deps.ts';
+import type { Caller } from './caller.ts';
+import type { ChangeDeps } from './deps.ts';
+import type { Committed, IdGenerator } from './ports.ts';
 
 /** One use case run: a single timestamp and actor, fresh ids, and the events to publish after commit. */
 export class ChangeSession {
   readonly now: Date;
   readonly actor: string;
-  readonly #ids: WorkItemDeps['ids'];
+  readonly #ids: IdGenerator;
   readonly #events: DomainEvent[] = [];
 
-  constructor(deps: Pick<WorkItemDeps, 'clock' | 'ids'>, caller: Caller) {
+  constructor(deps: Pick<ChangeDeps, 'clock' | 'ids'>, caller: Caller) {
     this.now = deps.clock.now();
     this.actor = caller.name;
     this.#ids = deps.ids;
@@ -38,7 +38,7 @@ export class ChangeSession {
 
 /** Run a change in a unit of work; publish its events only once it has been committed. */
 export async function runChange<T, E>(
-  deps: Pick<WorkItemDeps, 'clock' | 'ids' | 'events' | 'unitOfWork'>,
+  deps: ChangeDeps,
   caller: Caller,
   work: (session: ChangeSession) => Promise<Result<T, E>>,
 ): Promise<Result<Committed<T>, E>> {

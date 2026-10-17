@@ -23,12 +23,12 @@ import type { LinkError } from '#domain/links/link.ts';
 import type { Comment, Hyperlink, WorkItem, WorkItemLink } from '#domain/types.ts';
 import type { WorkItemError } from '#domain/work-items/errors.ts';
 import { blankWorkItem } from '#infrastructure/json-store/schema.ts';
-import { httpFailure } from '#presentation/work-items/errors.ts';
+import { httpFailure } from '#presentation/http/errors.ts';
 import { parseBulk, parseCreate, parseFields, parseHyperlink, parseMove } from '#presentation/work-items/parsers.ts';
 import { workItemRoutes, type WorkItemRouteDeps } from '#presentation/work-items/routes.ts';
 import { err, ok, type Result } from '#shared/result.ts';
 
-const caller: Caller = { name: 'Ann', memberId: 'm1', mayModerateComments: false, origin: 'tab' };
+const caller: Caller = { name: 'Ann', memberId: 'm1', mayModerateComments: false, admin: 'granted', origin: 'tab' };
 const delta = { version: 7 };
 const item: WorkItem = blankWorkItem({ id: 1, type: 'Bug', title: 'Crash' });
 const comment: Comment = { id: 'c1', author: 'Ann', authorId: 'm1', text: 'Hi', createdAt: '', editedAt: null };

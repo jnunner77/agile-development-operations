@@ -8,9 +8,9 @@ import { err, ok, type Result } from '#shared/result.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import type { WorkItemDeps, WorkItemsError } from './deps.ts';
-import type { ChangeSession } from './session.ts';
+import type { ChangeSession } from '../session.ts';
 import { createItem, findItem, linkItems, save } from './helpers.ts';
-import { runChange } from './session.ts';
+import { runChange } from '../session.ts';
 
 export interface CopyWorkItemInput {
   readonly caller: Caller;

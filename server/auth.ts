@@ -317,6 +317,11 @@ export class AuthManager {
     return { settings: this.settings, overridden: this.overridden, accounts };
   }
 
+  /** Whether a team made of `members` keeps an administrator who can sign in (always, with sign-in off). */
+  keepsUsableAdmin(members: readonly Member[]): boolean {
+    return !this.enabled || this.hasUsableAdmin([...members]);
+  }
+
   isAdmin(member: Member | null) {
     return !!member && this.account(member.id).isAdmin;
   }

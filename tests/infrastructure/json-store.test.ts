@@ -9,7 +9,13 @@ import { DeletedWorkItem } from '#domain/recycle-bin/deleted-work-item.ts';
 import { FieldChanges } from '#domain/work-items/fields.ts';
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
 import { JsonLinkRepository } from '#infrastructure/json-store/link-repository.ts';
-import { JsonProjectDirectory } from '#infrastructure/json-store/project-directory.ts';
+import { JsonMemberRepository } from '#infrastructure/json-store/member-repository.ts';
+import { JsonSettingsRepository } from '#infrastructure/json-store/settings-repository.ts';
+import { JsonCapacityRepository, JsonSprintRepository } from '#infrastructure/json-store/sprint-repository.ts';
+import { SettingsChanges } from '#domain/settings/project-settings.ts';
+import { CapacityPlan } from '#domain/sprints/capacity-plan.ts';
+import { Sprint, SprintChanges, type SprintId } from '#domain/sprints/sprint.ts';
+import { Member, MemberChanges, type MemberId } from '#domain/team/member.ts';
 import { JsonRecycleBinRepository } from '#infrastructure/json-store/recycle-bin-repository.ts';
 import { emptyDatabase, normalizeDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
@@ -190,20 +196,67 @@ describe('store repositories', () => {
     assert.equal(store.db.recycleBin[0]?.links[0]?.id, 'l1');
   });
 
-  it('answers project lookups from the running unit of work', async () => {
-    store.transact('Ann', undefined, (tx) => {
-      tx.db.members.push({ id: 'm1', name: 'Ann', username: '', email: '', color: '#000', active: true });
-      tx.db.sprints.push({ id: 's1', name: 'Sprint 1', startDate: null, finishDate: null, goal: '' });
-      tx.db.settings.areaPaths = [];
-    });
-    const project = new JsonProjectDirectory(uow);
-    await uow.run(meta, async () => {
-      assert.equal(await project.memberExists('m1'), true);
-      assert.equal(await project.memberExists('m2'), false);
-      assert.equal(await project.sprintExists('s1'), true);
-      assert.equal(await project.defaultAreaPath(), 'Fabrikam');
+  it('stores sprints, capacity, members and settings, reporting them in the delta', async () => {
+    const sprints = new JsonSprintRepository(uow);
+    const capacities = new JsonCapacityRepository(uow);
+    const members = new JsonMemberRepository(uow);
+    const settings = new JsonSettingsRepository(uow);
+    const result = await uow.run(meta, async () => {
+      const sprintChanges = SprintChanges.validate({ name: 'Sprint 1', startDate: '2026-01-05', finishDate: '2026-01-16' });
+      assert.ok(sprintChanges.ok);
+      const sprint = Sprint.create(sprintChanges.value, { id: 's1' as SprintId, existing: [], now: NOW });
+      assert.ok(sprint.ok);
+      await sprints.save(sprint.value);
+      assert.deepEqual((await sprints.findById(sprint.value.id))?.toSnapshot(), sprint.value.toSnapshot());
+
+      const memberChanges = MemberChanges.validate({ name: 'Ann' });
+      assert.ok(memberChanges.ok);
+      const member = Member.create(memberChanges.value, { id: 'm1' as MemberId, existing: await members.findAll(), now: NOW });
+      assert.ok(member.ok);
+      await members.save(member.value);
+      assert.deepEqual((await members.findById(member.value.id))?.toSnapshot(), member.value.toSnapshot());
+
+      const plan = CapacityPlan.empty(sprint.value.id);
+      await capacities.save(plan);
+      assert.deepEqual((await capacities.findBySprint(sprint.value.id))?.toSnapshot(), plan.toSnapshot());
+      assert.equal((await capacities.findAll()).length, 1);
+
+      const project = await settings.get();
+      assert.equal(project.defaultAreaPath, 'Fabrikam');
+      const renamed = SettingsChanges.validate({ projectName: 'Contoso' });
+      assert.ok(renamed.ok);
+      project.update(renamed.value, NOW);
+      await settings.save(project);
       return ok(undefined);
     });
+    assert.ok(result.ok);
+    const { delta } = result.value;
+    assert.deepEqual(delta.sprints?.map((s) => s.id), ['s1']);
+    assert.deepEqual(delta.members?.map((m) => m.id), ['m1']);
+    assert.deepEqual(delta.capacities?.map((c) => c.sprintId), ['s1']);
+    assert.equal(delta.settings?.projectName, 'Contoso');
+
+    const removed = await uow.run(meta, async () => {
+      await capacities.delete('s1' as SprintId);
+      await sprints.delete('s1' as SprintId);
+      await members.delete('m1' as MemberId);
+      return ok(undefined);
+    });
+    assert.ok(removed.ok);
+    assert.deepEqual([removed.value.delta.deletedSprintIds, removed.value.delta.deletedMemberIds], [['s1'], ['m1']]);
+    assert.deepEqual([store.db.sprints, store.db.members, store.db.capacities], [[], [], []]);
+  });
+
+  it('runs the store guards when members change', async () => {
+    store.addGuard((db) => {
+      if (db.members.length === 0 && store.db.members.length > 0) throw new Error('keep someone');
+    });
+    const members = new JsonMemberRepository(uow);
+    store.transact('Ann', undefined, (tx) => {
+      tx.db.members.push({ id: 'm1', name: 'Ann', username: '', email: '', color: '#000000', active: true });
+    });
+    await assert.rejects(uow.run(meta, async () => ok(await members.delete('m1' as MemberId))), /keep someone/);
+    assert.equal(store.db.members.length, 1);
   });
 
   it('throws on corrupt stored data rather than guessing', async () => {

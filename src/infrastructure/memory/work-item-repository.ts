@@ -1,3 +1,5 @@
+import type { SprintId } from '#domain/sprints/sprint.ts';
+import type { MemberId } from '#domain/team/member.ts';
 import type { WorkItemId } from '#domain/work-items/ids.ts';
 import type { RankEntry, WorkItemRepository } from '#domain/work-items/repository.ts';
 import { WorkItemAggregate } from '#domain/work-items/work-item.ts';
@@ -29,6 +31,14 @@ export class MemoryWorkItemRepository implements WorkItemRepository, Checkpointa
 
   async findChildren(parentId: WorkItemId): Promise<WorkItemAggregate[]> {
     return this.#rows.filter((w) => w.parentId === parentId).map((w) => WorkItemAggregate.reconstitute(structuredClone(w)));
+  }
+
+  async findInSprint(sprintId: SprintId): Promise<WorkItemAggregate[]> {
+    return this.#rows.filter((w) => w.iterationId === sprintId).map((w) => WorkItemAggregate.reconstitute(structuredClone(w)));
+  }
+
+  async findAssignedTo(memberId: MemberId): Promise<WorkItemAggregate[]> {
+    return this.#rows.filter((w) => w.assignedTo === memberId).map((w) => WorkItemAggregate.reconstitute(structuredClone(w)));
   }
 
   async ranks(): Promise<RankEntry[]> {

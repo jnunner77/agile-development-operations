@@ -4,7 +4,7 @@ import { err, ok, type Result } from '#shared/result.ts';
 import type { Caller } from '../caller.ts';
 import type { Committed } from '../ports.ts';
 import type { WorkItemDeps } from './deps.ts';
-import { runChange } from './session.ts';
+import { runChange } from '../session.ts';
 
 export interface PurgeWorkItemInput {
   readonly caller: Caller;
