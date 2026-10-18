@@ -91,8 +91,8 @@ export class FileSnapshotRepository implements SnapshotRepository {
     return { data: isRecord(raw) ? raw['data'] : undefined };
   }
 
-  async file(id: SnapshotId): Promise<Uint8Array | undefined> {
+  async file(id: SnapshotId): Promise<AsyncIterable<Uint8Array> | undefined> {
     const file = this.#fileFor(id);
-    return fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+    return fs.existsSync(file) ? fs.createReadStream(file) : undefined;
   }
 }

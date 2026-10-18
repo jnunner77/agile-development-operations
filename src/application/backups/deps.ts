@@ -31,7 +31,7 @@ export async function takeSnapshot(
   const now = deps.clock.now();
   const copy: ProjectCopy = deps.project.capture();
   const existing = await deps.snapshots.all();
-  const taken = Snapshot.take({ ...input, id: newSnapshotId(now, deps.ids.next()), stats: statsOf(copy.data), sizeBytes: copy.sizeBytes, now }, existing);
+  const taken = Snapshot.take({ ...input, id: newSnapshotId(now, deps.ids.next()), stats: statsOf(copy.data), sizeBytes: () => copy.sizeBytes, now }, existing);
   if (!taken.ok) return taken;
   await deps.snapshots.add(taken.value, copy);
   const events: DomainEvent[] = [...taken.value.pullEvents()];

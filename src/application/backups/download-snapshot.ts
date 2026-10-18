@@ -4,8 +4,8 @@ import type { BackupDeps } from './deps.ts';
 
 export interface SnapshotDownload {
   readonly fileName: string;
-  /** The snapshot file as stored: `{ format, meta, data }`. */
-  readonly contents: Uint8Array;
+  /** The snapshot file as stored: `{ format, meta, data }`, streamed in chunks. */
+  readonly contents: AsyncIterable<Uint8Array>;
 }
 
 /** A snapshot's file, to save elsewhere or import into another server. */

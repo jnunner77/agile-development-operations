@@ -72,7 +72,9 @@ describe('managing snapshots', () => {
     const { id } = unwrap(await new TakeSnapshot(t.deps).execute({ caller: bo }));
     const download = unwrap(await new DownloadSnapshot(t.deps).execute({ id }));
     assert.equal(download.fileName, `snapshot-${id}.json`);
-    assert.ok(download.contents.byteLength > 0);
+    let byteLength = 0;
+    for await (const chunk of download.contents) byteLength += chunk.byteLength;
+    assert.ok(byteLength > 0);
     assert.deepEqual(await new DownloadSnapshot(t.deps).execute({ id: 'missing' }), { ok: false, error: { code: 'SNAPSHOT_NOT_FOUND', id: 'missing' } });
   });
 });

@@ -46,7 +46,9 @@ describe('snapshot files', () => {
     assert.deepEqual(file.meta, older.toMeta());
     assert.deepEqual(file.data, store.db);
     assert.deepEqual(await repo.data(older.id), { data: store.db });
-    assert.deepEqual(JSON.parse(Buffer.from((await repo.file(older.id)) ?? []).toString('utf8')), file);
+    const streamed: Uint8Array[] = [];
+    for await (const chunk of (await repo.file(older.id)) ?? []) streamed.push(chunk);
+    assert.deepEqual(JSON.parse(Buffer.concat(streamed).toString('utf8')), file);
   });
 
   it('updates and deletes, and leaves out entries whose file is gone or that are damaged', async () => {

@@ -36,9 +36,13 @@ export class MemorySnapshotRepository implements SnapshotRepository {
     return stored ? { data: JSON.parse(stored.json) } : undefined;
   }
 
-  async file(id: SnapshotId): Promise<Uint8Array | undefined> {
+  async file(id: SnapshotId): Promise<AsyncIterable<Uint8Array> | undefined> {
     const stored = this.#snapshots.get(id);
-    return stored ? new TextEncoder().encode(JSON.stringify({ format: 'ado-clone-snapshot', meta: stored.meta, data: JSON.parse(stored.json) })) : undefined;
+    if (!stored) return undefined;
+    const contents = new TextEncoder().encode(JSON.stringify({ format: 'ado-clone-snapshot', meta: stored.meta, data: JSON.parse(stored.json) }));
+    return (async function* () {
+      yield contents;
+    })();
   }
 }
 

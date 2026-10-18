@@ -90,6 +90,23 @@ describe('taking snapshots', () => {
     for (const kind of ['auto', 'pre-restore', 'pre-import', 'pre-reset'] as const) assert.equal(Snapshot.take({ ...input, kind }, existing).ok, true);
   });
 
+  it('does not calculate snapshot size when the manual cap is reached', () => {
+    const existing = Array.from({ length: MAX_MANUAL_SNAPSHOTS }, (_, i) => snapshot('manual', new Date(NOW.getTime() + i)));
+    let reads = 0;
+    const input: NewSnapshot = {
+      id: newSnapshotId(NOW, 'x'),
+      kind: 'manual',
+      name: '',
+      description: '',
+      createdBy: 'Ann',
+      stats,
+      sizeBytes: () => (reads++, 1),
+      now: NOW,
+    };
+    assert.equal(Snapshot.take(input, existing).ok, false);
+    assert.equal(reads, 0);
+  });
+
   it('can be renamed and described, and never shares its stats', () => {
     const taken = snapshot('manual', NOW, { name: 'Old' });
     const details = SnapshotDetails.validate({ name: 'New' });

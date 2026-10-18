@@ -41,5 +41,5 @@ export interface SnapshotRepository {
   /** The project as the snapshot holds it, unchecked, or undefined if there is no such snapshot. */
   data(id: SnapshotId): Promise<{ readonly data: unknown } | undefined>;
   /** The snapshot file exactly as stored, for downloading. */
-  file(id: SnapshotId): Promise<Uint8Array | undefined>;
+  file(id: SnapshotId): Promise<AsyncIterable<Uint8Array> | undefined>;
 }

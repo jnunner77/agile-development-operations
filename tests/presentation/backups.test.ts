@@ -52,7 +52,12 @@ const fakes: BackupRouteDeps = {
   updateSnapshot: { execute: async (input) => (record('update')(input), ok(meta)) },
   deleteSnapshot: { execute: async (input) => (record('delete')(input), input.id === 'missing' ? err({ code: 'SNAPSHOT_NOT_FOUND', id: 'missing' }) : ok(undefined)) },
   restoreSnapshot: { execute: async (input) => (record('restore')(input), ok(replaced)) },
-  downloadSnapshot: { execute: async (input) => (record('download')(input), ok({ fileName: 'snapshot-snap-1.json', contents: new TextEncoder().encode('{"format":"ado-clone-snapshot"}') })) },
+  downloadSnapshot: {
+    execute: async (input) => {
+      record('download')(input);
+      return ok({ fileName: 'snapshot-snap-1.json', contents: (async function* () { yield new TextEncoder().encode('{"format":"ado-clone-snapshot"}'); })() });
+    },
+  },
   exportBackup: { execute: async (input) => (record('export')(input), exported) },
   importBackup: { execute: async (input) => (record('import')(input), ok(replaced)) },
   resetProject: { execute: async (input) => (record('reset')(input), ok(replaced)) },

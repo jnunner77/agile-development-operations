@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { pipeline } from 'node:stream/promises';
 import { requireAdmin } from '#application/access.ts';
 import type { DeleteSnapshot } from '#application/backups/delete-snapshot.ts';
 import type { DownloadSnapshot } from '#application/backups/download-snapshot.ts';
@@ -107,9 +108,8 @@ export function backupRoutes(deps: BackupRouteDeps): Router {
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Disposition': attachment(result.value.fileName),
-            'Content-Length': result.value.contents.byteLength,
           });
-          res.end(result.value.contents);
+          await pipeline(result.value.contents, res);
         }),
       ),
     )

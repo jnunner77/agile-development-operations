@@ -115,7 +115,7 @@ export interface NewSnapshot {
   readonly description: string;
   readonly createdBy: string;
   readonly stats: SnapshotStats;
-  readonly sizeBytes: number;
+  readonly sizeBytes: number | (() => number);
   readonly now: Date;
 }
 
@@ -140,7 +140,7 @@ export class Snapshot {
       kind: input.kind,
       createdAt: input.now.toISOString(),
       createdBy: input.createdBy,
-      sizeBytes: input.sizeBytes,
+      sizeBytes: typeof input.sizeBytes === 'function' ? input.sizeBytes() : input.sizeBytes,
       stats: { ...input.stats },
     });
     snapshot.#events.push({ type: 'SnapshotTaken', snapshotId: input.id, kind: input.kind, occurredAt: input.now });
