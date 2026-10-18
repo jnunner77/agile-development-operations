@@ -146,6 +146,34 @@ const cap = (await db()).capacities.find((c) => c.sprintId === current.id);
 const alex = (await db()).members.find((m) => m.name === 'Alex Johnson');
 assert.deepEqual(cap.members.find((m) => m.memberId === alex.id).daysOff, [{ start: current.finishDate, end: current.finishDate }]);
 
+step('sprint backlog: show and hide columns, remembered after a reload, then reset');
+await page.goto(`${base}/sprints/${current.id}/backlog`);
+const headers = () => page.locator('.backlog-grid thead th').allTextContents().then((t) => t.map((s) => s.trim()).filter(Boolean));
+const defaultHeaders = ['Order', 'Title', 'State', 'Assigned To', 'Effort', 'Remaining Work', 'Activity', 'Tags'];
+assert.deepEqual(await headers(), defaultHeaders);
+await page.getByRole('button', { name: 'Column options' }).click();
+const picker = page.getByRole('group', { name: 'Columns' });
+assert.ok(await picker.getByLabel('Title').isDisabled(), 'Title is always shown');
+await picker.getByLabel('ID').check();
+await picker.getByLabel('Tags').uncheck();
+await picker.getByLabel('Original Estimate').check();
+assert.ok(await picker.isVisible(), 'the picker stays open while picking');
+await page.keyboard.press('Escape');
+await picker.waitFor({ state: 'detached' });
+const pickedHeaders = ['Order', 'ID', 'Title', 'State', 'Assigned To', 'Effort', 'Original Estimate', 'Remaining Work', 'Activity'];
+assert.deepEqual(await headers(), pickedHeaders);
+const editProfile = (await db()).workItems.find((w) => w.title === 'Edit profile details');
+const idCell = page.locator('tr.grid-row', { hasText: 'Edit profile details' }).first().locator('td').nth(2);
+assert.equal((await idCell.textContent()).trim(), String(editProfile.id));
+await page.reload();
+assert.deepEqual(await headers(), pickedHeaders);
+await page.getByRole('button', { name: 'Column options' }).click();
+await page.getByRole('button', { name: 'Reset to defaults' }).click();
+assert.deepEqual(await headers(), defaultHeaders);
+assert.ok(await page.getByRole('button', { name: 'Reset to defaults' }).isDisabled());
+await page.mouse.click(5, 5);
+await picker.waitFor({ state: 'detached' });
+
 step('board: drag a card between columns');
 await page.setViewportSize({ width: 1440, height: 2400 }); // keep source and target on screen while dragging
 await page.goto(base + '/boards/requirements');
