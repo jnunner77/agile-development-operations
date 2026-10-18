@@ -17,7 +17,11 @@ export function equals(a: unknown, b: unknown): boolean {
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
   if (a instanceof RegExp && b instanceof RegExp) return String(a) === String(b);
   if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => equals(v, b[i]));
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!equals(a[i], b[i])) return false;
+    }
+    return true;
   }
   if (a instanceof Map && b instanceof Map) return a.size === b.size && [...a].every(([k, v]) => b.has(k) && equals(v, b.get(k)));
   if (a instanceof Set && b instanceof Set) return a.size === b.size && [...a].every((v) => b.has(v));

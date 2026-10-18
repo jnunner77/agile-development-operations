@@ -38,6 +38,8 @@ describe('expect', () => {
     fails(() => expect({ a: 1 }).toEqual({ a: 2 }));
     fails(() => expect({ a: 1 }).toEqual({ a: 1, b: 2 }));
     fails(() => expect([1, 2]).toEqual([1, 2, 3]));
+    fails(() => expect(new Array(1)).toEqual(['Saved']));
+    fails(() => expect(['Saved']).toEqual(new Array(1)));
     fails(() => expect({ a: { c: 2 } }).toMatchObject({ a: { c: 3 } }));
     fails(() => expect([{ a: 1 }, { a: 2 }]).toMatchObject([{ a: 1 }]));
     fails(() => expect([1]).toHaveLength(2));
@@ -59,6 +61,8 @@ describe('expect', () => {
     assert.throws(() => expect(1, 'the status').toBe(2), { message: 'the status: expected 1 to be 2' });
     assert.equal(equals(new Date(1), new Date(1)), true);
     assert.equal(equals(new Date(1), new Date(2)), false);
+    assert.equal(equals(new Array(1), [undefined]), true);
+    assert.equal(equals([undefined], new Array(1)), true);
   });
 
   it('refuses values of the wrong kind, negated or not', () => {
