@@ -9,7 +9,7 @@ import type { GitHubIntegrationRepository } from '#domain/integrations/repositor
 import type { AccountRepository, FailedAttemptsRepository, SessionRepository, SignInSettingsRepository } from '#domain/sign-in/repository.ts';
 import type { DeliveryLog, GitHubPayloads, WebhookSignatures } from './integrations/ports.ts';
 import type { ProjectStore, SnapshotRepository } from './backups/ports.ts';
-import type { Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
+import type { ChangeFeed, Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
 
 /** Everything the use cases can depend on. Each module takes the part it needs. */
 export interface AppDeps {
@@ -35,6 +35,8 @@ export interface AppDeps {
   readonly snapshots: SnapshotRepository;
   /** The whole project, for snapshots, backups and resets. */
   readonly project: ProjectStore;
+  /** Committed changes, for browsers to follow live. */
+  readonly changes: ChangeFeed;
   readonly github: GitHubIntegrationRepository;
   readonly deliveries: DeliveryLog;
   readonly webhookSignatures: WebhookSignatures;

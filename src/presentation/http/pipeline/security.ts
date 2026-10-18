@@ -1,9 +1,9 @@
-import type { NextFunction, Request, Response } from 'express';
-import { HttpError } from './errors.ts';
+import type { ServerResponse } from 'node:http';
 
-// Defensive middleware for running on the open internet: rate limits, temporary bans for
-// abusive clients, a cap on concurrent password hashing, cross-site request checks and
-// security headers. Everything is in memory, so it resets when the server restarts.
+// Defensive checks for running on the open internet: rate limits, temporary bans for abusive
+// clients, a cap on concurrent password hashing, cross-site request checks and live-connection
+// caps. Everything is in memory, so it resets when the server restarts. Each check returns a
+// refusal for the pipeline to send, or null to let the request through.
 
 /** Token bucket: `burst` requests at once, refilling to allow `perMinute` on average. */
 export interface Limit {
@@ -54,12 +54,27 @@ export const DEFAULT_SECURITY: SecurityOptions = {
   allowlist: [],
 };
 
+/** Why a request is turned away, and how the answer says so. */
+export interface Refusal {
+  readonly status: number;
+  readonly message: string;
+  /** Seconds, for a Retry-After header. */
+  readonly retryAfter?: number;
+  /** Close the connection after answering (for blocked clients). */
+  readonly close?: boolean;
+}
+
+/** The member a request comes from, as far as limits are concerned. */
+export interface LimitedMember {
+  readonly id: string;
+}
+
 function ipv4ToInt(ip: string): number | null {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
   if (!m) return null;
-  const parts = m.slice(1).map(Number);
-  if (parts.some((p) => p > 255)) return null;
-  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const [a = 0, b = 0, c = 0, d = 0] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((p) => p > 255)) return null;
+  return ((a << 24) | (b << 16) | (c << 8) | d) >>> 0;
 }
 
 /** Build a matcher for exact addresses and IPv4 CIDR ranges ("203.0.113.0/24"). */
@@ -67,7 +82,7 @@ export function ipMatcher(entries: string[]): (ip: string) => boolean {
   const exact = new Set<string>();
   const ranges: { base: number; mask: number }[] = [];
   for (const raw of entries.map((e) => e.trim()).filter(Boolean)) {
-    const [addr, bits] = raw.split('/');
+    const [addr = '', bits] = raw.split('/');
     const base = ipv4ToInt(addr);
     if (bits !== undefined && base !== null && /^\d+$/.test(bits) && Number(bits) <= 32) {
       const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
@@ -163,7 +178,10 @@ class EventCounter {
     const list = (this.events.get(key) ?? []).filter((t) => now - t < this.windowMs);
     list.push(now);
     this.events.delete(key);
-    if (this.events.size >= this.maxKeys) this.events.delete(this.events.keys().next().value!);
+    if (this.events.size >= this.maxKeys) {
+      const oldest = this.events.keys().next();
+      if (!oldest.done) this.events.delete(oldest.value);
+    }
     this.events.set(key, list);
     return list.length;
   }
@@ -182,16 +200,12 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /** Paths where a 401 means someone presented bad credentials (password or webhook signature). */
 const SIGN_IN_PATHS = new Set(['/api/auth/login', '/api/auth/password', '/api/integrations/github/webhook']);
 
-function tooMany(retryAfterMs: number, what = 'requests') {
+function tooMany(retryAfterMs: number, what = 'requests'): Refusal {
   const secs = Math.max(1, Math.ceil(retryAfterMs / 1000));
-  const err = new HttpError(429, `Too many ${what}. Try again in ${secs} second${secs === 1 ? '' : 's'}.`);
-  (err as HttpError & { retryAfter?: number }).retryAfter = secs;
-  return err;
+  return { status: 429, message: `Too many ${what}. Try again in ${secs} second${secs === 1 ? '' : 's'}.`, retryAfter: secs };
 }
 
-export function retryAfterOf(err: unknown): number | undefined {
-  return (err as { retryAfter?: number })?.retryAfter;
-}
+const CROSS_SITE: Refusal = { status: 403, message: 'Cross-site requests are not allowed' };
 
 export class Security {
   readonly options: SecurityOptions;
@@ -271,61 +285,48 @@ export class Security {
     }
   }
 
-  private check(bucket: TokenBucket, key: string, ip: string, what?: string) {
-    if (this.trusted(ip)) return;
+  private check(bucket: TokenBucket, key: string, ip: string, what?: string): Refusal | null {
+    if (this.trusted(ip)) return null;
     const r = bucket.take(key);
-    if (!r.ok) {
-      this.count(this.violations, ip, this.options.ban.violations, 'repeatedly exceeded rate limits');
-      throw tooMany(r.retryAfterMs, what);
-    }
+    if (r.ok) return null;
+    this.count(this.violations, ip, this.options.ban.violations, 'repeatedly exceeded rate limits');
+    return tooMany(r.retryAfterMs, what);
   }
 
   /**
-   * First middleware for every request: rejects banned clients, applies the per-IP limit,
-   * and watches responses for signs of abuse (failed sign-ins, scanning for endpoints).
+   * First check for every request: turns away banned clients and applies the per-IP limit (the
+   * health check is exempt). `path` is the request path, without the query string.
    */
-  firewall = (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-    if (this.isBanned(ip)) {
-      res.setHeader('Connection', 'close');
-      return res.status(403).json({ error: 'Access from your network is temporarily blocked.' });
-    }
-    // Routers rewrite req.url while handling a request, so remember the original path now.
-    // Lower-cased because routing ignores case (/api/AUTH/login is the sign-in route too).
-    const path = req.path.toLowerCase();
-    if (req.path === '/api/health') return next();
-    this.check(this.ipBucket, ip, ip);
+  admit(ip: string, path: string): Refusal | null {
+    if (this.isBanned(ip)) return { status: 403, message: 'Access from your network is temporarily blocked.', close: true };
+    if (path === '/api/health') return null;
+    return this.check(this.ipBucket, ip, ip);
+  }
+
+  /**
+   * Watch a response for signs of abuse: failed sign-ins (or an invalid API token) and scanning
+   * for endpoints that don't exist. Paths compare case-insensitively, like routing.
+   */
+  watch(res: ServerResponse, ip: string, path: string, invalidToken: () => boolean): void {
+    const lower = path.toLowerCase().replace(/(.)\/$/, '$1');
     res.on('finish', () => {
-      if (res.statusCode === 401 && (SIGN_IN_PATHS.has(path) || res.locals.invalidToken)) this.count(this.authFailures, ip, this.options.ban.authFailures, 'too many failed sign-in attempts');
-      else if (res.statusCode === 404 && path.startsWith('/api/')) this.count(this.notFounds, ip, this.options.ban.notFound, 'probing for API endpoints');
+      if (res.statusCode === 401 && (SIGN_IN_PATHS.has(lower) || invalidToken())) this.count(this.authFailures, ip, this.options.ban.authFailures, 'too many failed sign-in attempts');
+      else if (res.statusCode === 404 && lower.startsWith('/api/')) this.count(this.notFounds, ip, this.options.ban.notFound, 'probing for API endpoints');
     });
-    next();
-  };
+  }
 
-  /** Per-user (or anonymous) API limits; runs after sign-in has identified the caller. */
-  apiLimits = (signInEnabled: () => boolean) => (req: Request, res: Response, next: NextFunction) => {
-    if (req.path === '/health') return next();
-    const ip = req.ip ?? 'unknown';
-    const member = res.locals.authMember as { id: string } | null | undefined;
-    if (signInEnabled() && !member) {
-      this.check(this.anonBucket, ip, ip);
-    } else {
-      const key = member ? `m:${member.id}` : `ip:${ip}`;
-      this.check(this.userBucket, key, ip);
-      if (MUTATING.has(req.method)) this.check(this.mutationBucket, key, ip, 'changes');
-    }
-    next();
-  };
+  /** Per-user (or anonymous) API limits; runs once the caller has been identified. */
+  apiLimit(ip: string, method: string, member: LimitedMember | null, signInEnabled: boolean): Refusal | null {
+    if (signInEnabled && !member) return this.check(this.anonBucket, ip, ip);
+    const key = member ? `m:${member.id}` : `ip:${ip}`;
+    return this.check(this.userBucket, key, ip) ?? (MUTATING.has(method) ? this.check(this.mutationBucket, key, ip, 'changes') : null);
+  }
 
-  /** Sign-in attempts: strict per-IP limit plus a global cap on concurrent password hashing. */
-  signIn = (req: Request, res: Response, next: NextFunction) => {
-    if (req.method !== 'POST') return next();
-    const ip = req.ip ?? 'unknown';
-    this.check(this.signInBucket, ip, ip, 'sign-in attempts');
-    if (this.hashing >= this.options.hashConcurrency) {
-      res.setHeader('Retry-After', '2');
-      throw new HttpError(503, 'The server is busy. Try signing in again in a moment.');
-    }
+  /** A sign-in attempt: a strict per-IP limit plus a global cap on concurrent password hashing. */
+  signInAttempt(ip: string, res: ServerResponse): Refusal | null {
+    const limited = this.check(this.signInBucket, ip, ip, 'sign-in attempts');
+    if (limited) return limited;
+    if (this.hashing >= this.options.hashConcurrency) return { status: 503, message: 'The server is busy. Try signing in again in a moment.', retryAfter: 2 };
     this.hashing++;
     let released = false;
     const release = () => {
@@ -336,39 +337,38 @@ export class Security {
     };
     res.on('finish', release);
     res.on('close', release);
-    next();
-  };
+    return null;
+  }
 
   /** Expensive operations (backups, snapshots, reset) per user or IP. */
-  heavy = (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip ?? 'unknown';
-    const member = res.locals.authMember as { id: string } | null | undefined;
-    this.check(this.heavyBucket, member ? `m:${member.id}` : `ip:${ip}`, ip, 'backup and snapshot operations');
-    next();
-  };
+  heavy(ip: string, member: LimitedMember | null): Refusal | null {
+    return this.check(this.heavyBucket, member ? `m:${member.id}` : `ip:${ip}`, ip, 'backup and snapshot operations');
+  }
 
-  /** Reserve a live-update connection; returns a release function. */
-  openStream(req: Request, res: Response): () => void {
-    const ip = req.ip ?? 'unknown';
-    const member = res.locals.authMember as { id: string } | null | undefined;
-    const keys = [`ip:${ip}`, ...(member ? [`m:${member.id}`] : [])];
+  /** Reserve a live-update connection: a function that releases it, or why there is none. */
+  openStream(ip: string, member: LimitedMember | null): { readonly release: () => void } | Refusal {
+    const ipKey = `ip:${ip}`;
+    const memberKey = member ? `m:${member.id}` : null;
     const o = this.options;
-    if (this.streamsOpen >= o.streamsTotal) throw new HttpError(503, 'Too many live connections. Try again later.');
-    if ((this.streams.get(keys[0]) ?? 0) >= o.streamsPerIp || (keys[1] && (this.streams.get(keys[1]) ?? 0) >= o.streamsPerUser)) {
-      throw tooMany(10_000, 'open tabs');
+    if (this.streamsOpen >= o.streamsTotal) return { status: 503, message: 'Too many live connections. Try again later.' };
+    if ((this.streams.get(ipKey) ?? 0) >= o.streamsPerIp || (memberKey && (this.streams.get(memberKey) ?? 0) >= o.streamsPerUser)) {
+      return tooMany(10_000, 'open tabs');
     }
+    const keys = memberKey ? [ipKey, memberKey] : [ipKey];
     this.streamsOpen++;
     for (const k of keys) this.streams.set(k, (this.streams.get(k) ?? 0) + 1);
     let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      this.streamsOpen--;
-      for (const k of keys) {
-        const n = (this.streams.get(k) ?? 1) - 1;
-        if (n <= 0) this.streams.delete(k);
-        else this.streams.set(k, n);
-      }
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.streamsOpen--;
+        for (const k of keys) {
+          const n = (this.streams.get(k) ?? 1) - 1;
+          if (n <= 0) this.streams.delete(k);
+          else this.streams.set(k, n);
+        }
+      },
     };
   }
 
@@ -376,56 +376,24 @@ export class Security {
    * Cross-site request forgery guard. Browsers attach an Origin header (and Sec-Fetch-Site)
    * to cross-origin requests; changes are only accepted from pages served by this app.
    */
-  sameOrigin = (req: Request, _res: Response, next: NextFunction) => {
-    if (!MUTATING.has(req.method)) return next();
-    if (req.get('sec-fetch-site') === 'cross-site') throw new HttpError(403, 'Cross-site requests are not allowed');
-    const origin = req.get('origin');
-    if (origin && origin !== 'null') {
+  sameOrigin(method: string, headers: { readonly origin?: string | undefined; readonly host?: string | undefined; readonly fetchSite?: string | undefined }): Refusal | null {
+    if (!MUTATING.has(method)) return null;
+    if (headers.fetchSite === 'cross-site') return CROSS_SITE;
+    const { origin } = headers;
+    if (origin === 'null') return CROSS_SITE;
+    if (origin) {
       let host: string;
       try {
         host = new URL(origin).host;
       } catch {
-        throw new HttpError(403, 'Cross-site requests are not allowed');
+        return CROSS_SITE;
       }
-      if (host !== req.get('host')) throw new HttpError(403, 'Cross-site requests are not allowed');
-    } else if (origin === 'null') {
-      throw new HttpError(403, 'Cross-site requests are not allowed');
+      if (host !== headers.host) return CROSS_SITE;
     }
-    next();
-  };
+    return null;
+  }
 
   get stats() {
     return { bans: this.bans.size, streamsOpen: this.streamsOpen, hashing: this.hashing, trackedIps: this.ipBucket.size };
   }
-}
-
-/**
- * Security headers for every response. The content security policy only allows scripts,
- * styles and connections from this app itself; images may also be data: URLs (pasted
- * images) or https (links in descriptions).
- */
-export function securityHeaders(_req: Request, res: Response, next: NextFunction) {
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
-      "font-src 'self'",
-      "connect-src 'self'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-    ].join('; '),
-  );
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
-  res.setHeader('X-DNS-Prefetch-Control', 'off');
-  next();
 }

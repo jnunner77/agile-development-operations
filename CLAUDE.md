@@ -2,9 +2,9 @@
 
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
 client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
-architecture in `src/` (shared, domain, application, infrastructure, presentation). Every feature
-has moved there; `server/` still holds the Express request pipeline (rate limits, the live update
-stream, bootstrap, static files).
+architecture in `src/` (shared, domain, application, infrastructure, presentation) on plain Node:
+no runtime dependencies, and the request pipeline (rate limits, live updates, static files) is
+`src/presentation/http/pipeline/`.
 See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
@@ -62,11 +62,11 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
     HTTP statuses.
   - `src/compose.ts` is the only place that knows the concrete classes.
   - Who may administer the project is decided in the application (`requireAdmin`,
-    `adminAccessOf`); routes that need it check before reading the request, as the Express routes
-    did. Who is calling comes from `IdentifyCaller` (session cookie or API token), and
-    `presentation/sign-in/gate.ts` decides which requests need signing in, also for `server/`.
-- No new runtime dependencies in `src/`. Express remains only in `server/` until the request
-  pipeline moves into the layers too.
+    `adminAccessOf`); routes that need it check before reading the request. Who is
+    calling comes from `IdentifyCaller` (session cookie or API token), and
+    `presentation/sign-in/gate.ts` decides which requests need signing in.
+- No runtime dependencies on the server: only Node's built-in modules. Libraries the client needs
+  are dev dependencies, bundled by Vite, so the production image installs nothing.
 - Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`), so it is
   validated, persisted, recorded in work item history and broadcast to browsers as deltas, or not
   applied at all. Replacing the whole project (restore, import, reset) runs exclusively through

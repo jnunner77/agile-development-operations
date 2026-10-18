@@ -1,13 +1,12 @@
 // Starts the Boards server. Configuration comes from the environment (see deploy/README.md).
 
-import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 import { LocalEventBus } from '#infrastructure/local-event-bus.ts';
 import { buildDemoDatabase } from '#infrastructure/json-store/demo-project.ts';
-import { Security } from '../server/security.ts';
+import { Security } from '#presentation/http/pipeline/security.ts';
 import { composeApp, createAuth } from './compose.ts';
 
 const env = process.env;
@@ -32,7 +31,7 @@ security.start();
 const events = new LocalEventBus();
 if (/^(1|true|yes)$/i.test(env['EVENT_LOG'] ?? '')) events.subscribe((event) => console.log(JSON.stringify(event)));
 
-const { app, startBackupSchedule } = composeApp({
+const { app: server, startBackupSchedule } = composeApp({
   store,
   auth,
   security,
@@ -43,7 +42,6 @@ const { app, startBackupSchedule } = composeApp({
 
 const stopBackups = startBackupSchedule();
 
-const server = http.createServer(app);
 // Drop clients that send requests too slowly (slowloris) or hold idle connections open.
 server.headersTimeout = 15_000;
 server.requestTimeout = 120_000; // time to receive a whole request, including a large backup upload

@@ -27,26 +27,22 @@
   "engines": {
     "node": ">=22.18"
   },
-  "dependencies": {
-    "dompurify": "^3.4.16",
-    "express": "^5.2.1",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-router-dom": "^7.18.4",
-    "zustand": "^5.0.15"
-  },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
+    "dompurify": "^3.4.16",
     "playwright": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
     "supertest": "^7.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "zustand": "^5.0.15"
   }
 }

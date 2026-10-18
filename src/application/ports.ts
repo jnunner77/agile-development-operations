@@ -67,3 +67,12 @@ export interface TeamDirectory {
 export interface SerialWrites {
   run<T>(work: () => Promise<T>): Promise<T>;
 }
+
+/** Every committed change, as the change set browsers apply, with the tab it came from. */
+export type ChangeListener = (delta: Delta, origin: string | undefined) => void;
+
+/** Committed changes as they happen, for the live update stream. */
+export interface ChangeFeed {
+  /** Listen until the returned function is called. */
+  subscribe(listener: ChangeListener): () => void;
+}

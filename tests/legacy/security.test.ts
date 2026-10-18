@@ -5,7 +5,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, createAuth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { Security, TokenBucket, type SecurityOptions } from '../../server/security.ts';
+import { Security, TokenBucket, type SecurityOptions } from '#presentation/http/pipeline/security.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
 let dir: string;
@@ -234,7 +234,7 @@ describe('sessions', () => {
 
 describe('allowlist', () => {
   it('matches exact addresses and IPv4 ranges', async () => {
-    const { ipMatcher } = await import('../../server/security.ts');
+    const { ipMatcher } = await import('#presentation/http/pipeline/security.ts');
     const m = ipMatcher(['203.0.113.0/24', '198.51.100.7', '2001:db8::1', ' ']);
     expect(m('203.0.113.200')).toBe(true);
     expect(m('::ffff:203.0.113.5')).toBe(true);
