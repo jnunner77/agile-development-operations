@@ -4,7 +4,8 @@ A self-hosted clone of the Azure DevOps **Boards** experience: product backlogs,
 sprints with taskboards, capacity planning with days off, and rich work items — plus snapshots
 and backups of all your data.
 
-Built with React, Express and TypeScript; data is stored as JSON on the server.
+Built with React and TypeScript; the server uses only Node's built-in modules, and data is stored
+as JSON on the server.
 
 ## Quick start
 
@@ -177,12 +178,10 @@ otherwise passwords travel over the network unencrypted.
 
 ## Architecture
 
-The server is moving to an *onion* architecture: business rules sit in the centre, everything
-else plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
-outward. Work items, links, the recycle bin, sprints, capacity, team members, project settings,
-sign-in, API tokens, the GitHub integration, snapshots and backups have moved. What remains in
-Express is the request pipeline itself (rate limits, the live update stream, bootstrap and
-health, static files).
+The server follows an *onion* architecture: business rules sit in the centre, everything else
+plugs in from the outside, and the TypeScript compiler refuses to build if a layer reaches
+outward. It has no runtime dependencies: only TypeScript (run directly by Node) and Node's
+built-in modules.
 
 ```
 src/
@@ -201,7 +200,8 @@ src/
                    snapshots, export, import and reset, the scheduled snapshot), who may
                    administer the project, the ports they need (clock, ids, events, unit of work,
                    password hashing, secrets, webhook signatures, GitHub payloads, snapshots, the
-                   whole project) and the API's data contracts.
+                   whole project, committed changes), who is calling (from a session, an API token
+                   or the X-User header) and the API's data contracts.
   infrastructure/  Adapters for those ports: the JSON document store (atomic writes to
                    data/db.json) and repositories over it; auth.json, api-tokens.json and
                    integrations.json (kept apart, readable by the server only); snapshot files
@@ -210,11 +210,11 @@ src/
                    deliveries; a scheduler; in-memory versions of everything for tests.
   presentation/    node:http routes: parse requests by hand, call a use case, map its errors to
                    HTTP statuses. Also the session cookie, the gate that decides which requests
-                   need signing in, and the GitHub webhook (checked before its body is read).
+                   need signing in, the GitHub webhook (checked before its body is read), and the
+                   request pipeline (http/pipeline): security headers, rate limits and temporary
+                   bans, the cross-site check, trusted proxies, the live update stream, bootstrap,
+                   health and the built client.
   main.ts          Starts the server. compose.ts wires the concrete classes together.
-server/   The Express request pipeline: security headers, rate limits and bans, the live update
-          stream, bootstrap, health and static files. It asks the layers who is calling for every request
-          and hands the moved routes to them.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
 tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
           whole app over HTTP.

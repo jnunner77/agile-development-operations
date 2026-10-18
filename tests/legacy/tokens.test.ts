@@ -5,7 +5,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, createAuth, type Auth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { Security } from '../../server/security.ts';
+import { Security } from '#presentation/http/pipeline/security.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
 const DAY = 86_400_000;

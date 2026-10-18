@@ -18,6 +18,7 @@ import { MemoryWorkItemRepository } from '#infrastructure/memory/work-item-repos
 import { MemoryGitHubIntegrationRepository } from '#infrastructure/memory/github-integration-repository.ts';
 import { MemoryDeliveryLog } from '#infrastructure/github/delivery-log.ts';
 import { MemoryProject, MemorySnapshotRepository } from '#infrastructure/memory/backups.ts';
+import { MemoryChangeFeed } from '#infrastructure/memory/change-feed.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import type { DevelopmentEvent } from '#domain/dev-links/activity.ts';
 import { err, ok } from '#shared/result.ts';
@@ -48,6 +49,7 @@ export function setup() {
   const failedAttempts = new MemoryFailedAttemptsRepository();
   const github = new MemoryGitHubIntegrationRepository();
   const snapshots = new MemorySnapshotRepository();
+  const changes = new MemoryChangeFeed();
   /** The whole project, for snapshots and backups; its demo has one member, Dee. */
   const project = new MemoryProject(emptyDatabase({ projectName: 'Fabrikam' }), () => ({
     ...emptyDatabase({ projectName: 'Demo' }),
@@ -89,6 +91,7 @@ export function setup() {
     signInForcedOff: false,
     snapshots,
     project,
+    changes,
     github,
     deliveries: new MemoryDeliveryLog(),
     // Stand-ins: a delivery is "signed" with `signed:<secret>`, and its body names a sent event.
@@ -119,7 +122,7 @@ export function setup() {
     assert.ok(result.ok, JSON.stringify(result));
     return result.value.result;
   };
-  return { deps, snapshots, project, github, payloads, items, links, recycleBin, sprints, capacities, members, settings, accounts, signInSettings, apiTokens, failedAttempts, clock, unitOfWork, published, item, create };
+  return { deps, snapshots, project, changes, github, payloads, items, links, recycleBin, sprints, capacities, members, settings, accounts, signInSettings, apiTokens, failedAttempts, clock, unitOfWork, published, item, create };
 }
 
 export function unwrap<T, E>(result: Result<T, E>): T {

@@ -15,10 +15,10 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=4000 \
     DATA_DIR=/data
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+# The server uses only Node's built-in modules: nothing to install. package.json is still needed
+# for its "imports" map (#domain/…, #application/…).
+COPY package.json ./
 COPY src ./src
-COPY server ./server
 COPY --from=build /app/dist/client ./dist/client
 # The data directory is owned by the unprivileged user so a fresh volume inherits it.
 RUN mkdir -p /data && chown node:node /data

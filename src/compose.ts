@@ -93,7 +93,15 @@ import { StoreProject } from '#infrastructure/json-store/store-project.ts';
 import { runEvery } from '#infrastructure/scheduler.ts';
 import { FileSnapshotRepository } from '#infrastructure/snapshots/snapshot-files.ts';
 import { backupRoutes } from '#presentation/backups/routes.ts';
-import { createExpressApp, type AppOptions } from '../server/app.ts';
+import http from 'node:http';
+import { LoadProject } from '#application/project/load-project.ts';
+import { WatchChanges } from '#application/project/watch-changes.ts';
+import { StoreChangeFeed } from '#infrastructure/json-store/store-change-feed.ts';
+import { MissingRecordError, RejectedChangeError } from '#infrastructure/json-store/store.ts';
+import type { HttpFailure } from '#presentation/http/errors.ts';
+import type { TrustProxy } from '#presentation/http/pipeline/client-address.ts';
+import { requestPipeline } from '#presentation/http/pipeline/pipeline.ts';
+import { Security } from '#presentation/http/pipeline/security.ts';
 
 export interface AuthOptions {
   /** The time, in milliseconds since the epoch; tests pass their own clock. */
@@ -145,7 +153,18 @@ export function createAuth(store: Store, options: AuthOptions = {}): Auth {
   };
 }
 
-export interface CreateAppOptions extends Omit<AppOptions, 'layeredRoutes' | 'signIn'> {
+export interface CreateAppOptions {
+  readonly store: Store;
+  /** The built client to serve, if any. */
+  readonly staticDir?: string | undefined;
+  /**
+   * Set when running behind a reverse proxy (e.g. Caddy), so the app sees clients' addresses and
+   * the original HTTPS scheme (and marks sign-in cookies as Secure). Same values as Express's
+   * "trust proxy": true, a number of hops, or trusted addresses.
+   */
+  readonly trustProxy?: TrustProxy;
+  /** Rate limits and abuse protection; pass false to turn them off (tests). */
+  readonly security?: Security | false;
   /** Sign-in; one is created for the store's data directory if omitted. */
   readonly auth?: Auth;
   /** Where published domain events go; a private bus if omitted. */
@@ -168,6 +187,7 @@ export function composeDeps(store: Store, auth: Auth, events: LocalEventBus): Ap
     ...signIn,
     snapshots: new FileSnapshotRepository(store.dataDir),
     project: new StoreProject(store),
+    changes: new StoreChangeFeed(store),
     github: new FileGitHubIntegrationRepository(new IntegrationsFile(store.dataDir)),
     deliveries: new MemoryDeliveryLog(),
     webhookSignatures: new HmacSignatures(),
@@ -257,34 +277,45 @@ export function composeRoutes(deps: AppDeps, signInDeps: SignInDeps, context: Re
 /** How often the server checks whether a scheduled snapshot is due. */
 const BACKUP_CHECK_MS = 10 * 60_000;
 
+/** Errors adapters throw that mean something to the caller. */
+function describeStoreError(error: unknown): HttpFailure | undefined {
+  if (error instanceof MissingRecordError) return { status: 404, message: error.message };
+  if (error instanceof RejectedChangeError) return { status: 400, message: error.message };
+  return undefined;
+}
+
 export interface ComposedApp {
-  readonly app: ReturnType<typeof createExpressApp>;
+  /** The HTTP server, not yet listening. */
+  readonly app: http.Server;
   /** Take scheduled snapshots when due, checking now and every 10 minutes. Returns a function that stops it. */
   startBackupSchedule(): () => void;
 }
 
-/** The whole app: the layered slices plugged into the Express server that still hosts the rest. */
+/** The whole app as an HTTP server (not yet listening). */
 export function createApp(options: CreateAppOptions) {
   return composeApp(options).app;
 }
 
 /** The app, and the background work that comes with it. */
 export function composeApp(options: CreateAppOptions): ComposedApp {
-  const { events = new LocalEventBus(), auth = createAuth(options.store), ...rest } = options;
+  const { events = new LocalEventBus(), auth = createAuth(options.store), security = new Security() } = options;
   const deps = composeDeps(options.store, auth, events);
   // Sign-in keeps its own clock, so tests can move time for sessions, lockouts and expiry alone.
   const signInDeps: SignInDeps = { ...deps, clock: auth.deps.clock };
   const authenticator = new Authenticator(new IdentifyCaller(signInDeps));
-  const app = createExpressApp({
-    ...rest,
-    signIn: {
-      authenticator,
-      get enabled() {
-        return auth.enabled;
-      },
-    },
-    layeredRoutes: (context) => composeRoutes(deps, signInDeps, context),
+  const handler = requestPipeline({
+    routes: (context) => composeRoutes(deps, signInDeps, context),
+    authenticator,
+    signInEnabled: () => auth.enabled,
+    team: deps.team,
+    loadProject: new LoadProject(deps),
+    watchChanges: new WatchChanges(deps),
+    security,
+    trustProxy: options.trustProxy,
+    staticDir: options.staticDir,
+    describeError: describeStoreError,
   });
+  const app = http.createServer(handler);
   const scheduled = new TakeScheduledSnapshot(deps);
   return {
     app,
