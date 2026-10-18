@@ -2,8 +2,27 @@ import { randomUUID } from 'node:crypto';
 import { addDays, dayOfWeek, todayLocal, workingDaysBetween } from '#domain/dates.ts';
 import { stateDef, type WorkItemType } from '#domain/process.ts';
 import type { Database } from '#application/contracts/database.ts';
-import type { FieldChange, Member, Sprint, SprintCapacity, WorkItem } from '#domain/types.ts';
-import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
+import type { DateRange, FieldChange, Member, Sprint, SprintCapacity, WorkItem } from '#domain/types.ts';
+import { blankWorkItem, emptyDatabase } from './schema.ts';
+
+/** The demo's sprints all have dates. */
+interface DatedSprint extends Sprint {
+  startDate: string;
+  finishDate: string;
+}
+
+/** The fields the demo's history changes. */
+interface DemoChange {
+  state?: string;
+  remainingWork?: number;
+  completedWork?: number;
+}
+
+function setField<K extends keyof DemoChange>(item: WorkItem, changes: FieldChange[], field: K, value: WorkItem[K] | undefined): void {
+  if (value === undefined || item[field] === value) return;
+  changes.push({ field, oldValue: item[field] ?? null, newValue: value ?? null });
+  item[field] = value;
+}
 
 /**
  * Demo project used on first start so the boards have something to show. Dates are
@@ -12,45 +31,49 @@ import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.
 export function buildDemoDatabase(today: string = todayLocal(new Date())): Database {
   const db = emptyDatabase({ projectName: 'Fabrikam', teamName: 'Fabrikam Team', areaPaths: ['Fabrikam', 'Fabrikam\\Web', 'Fabrikam\\Mobile', 'Fabrikam\\Platform'] });
 
-  const members: Member[] = [
-    { id: randomUUID(), name: 'Alex Johnson', username: 'alex', email: 'alex@fabrikam.example', color: '#0078d4', active: true },
-    { id: randomUUID(), name: 'Priya Patel', username: 'priya', email: 'priya@fabrikam.example', color: '#8764b8', active: true },
-    { id: randomUUID(), name: 'Marcus Chen', username: 'marcus', email: 'marcus@fabrikam.example', color: '#00b294', active: true },
-    { id: randomUUID(), name: 'Sofia Rossi', username: 'sofia', email: 'sofia@fabrikam.example', color: '#e3008c', active: true },
-    { id: randomUUID(), name: 'Dana Kim', username: 'dana', email: 'dana@fabrikam.example', color: '#ca5010', active: true },
-  ];
-  const [alex, priya, marcus, sofia, dana] = members;
-  db.members = members;
+  const member = (name: string, username: string, color: string): Member => ({ id: randomUUID(), name, username, email: `${username}@fabrikam.example`, color, active: true });
+  const alex = member('Alex Johnson', 'alex', '#0078d4');
+  const priya = member('Priya Patel', 'priya', '#8764b8');
+  const marcus = member('Marcus Chen', 'marcus', '#00b294');
+  const sofia = member('Sofia Rossi', 'sofia', '#e3008c');
+  const dana = member('Dana Kim', 'dana', '#ca5010');
+  db.members = [alex, priya, marcus, sofia, dana];
 
-  // Two-week sprints (Mon..Fri of the following week); today falls in the second one.
+  // Two-week sprints (Mon..Fri of the following week); today falls in the third one.
   const dow = dayOfWeek(today);
   const monday = addDays(today, -((dow + 6) % 7));
   const currentStart = dow >= 1 && dow <= 3 ? addDays(monday, -7) : monday;
-  const sprints: Sprint[] = [-2, -1, 0, 1, 2].map((offset, idx) => {
+  const sprint = (offset: number, name: string, goal = ''): DatedSprint => {
     const start = addDays(currentStart, offset * 14);
-    return { id: randomUUID(), name: `Sprint ${idx + 1}`, startDate: start, finishDate: addDays(start, 11), goal: '' };
-  });
-  sprints[2].goal = 'Customers can manage their own account details and see invoices in the portal.';
-  sprints[3].goal = 'Offline mode beta on Android and iOS.';
-  db.sprints = sprints;
-  const [s1, s2, s3, s4] = sprints;
+    return { id: randomUUID(), name, startDate: start, finishDate: addDays(start, 11), goal };
+  };
+  const s1 = sprint(-2, 'Sprint 1');
+  const s2 = sprint(-1, 'Sprint 2');
+  const s3 = sprint(0, 'Sprint 3', 'Customers can manage their own account details and see invoices in the portal.');
+  const s4 = sprint(1, 'Sprint 4', 'Offline mode beta on Android and iOS.');
+  const s5 = sprint(2, 'Sprint 5');
+  db.sprints = [s1, s2, s3, s4, s5];
 
   const dev = (hours: number, activity = 'Development') => [{ activity, capacityPerDay: hours }];
-  db.capacities = sprints.map<SprintCapacity>((s) => ({
+  const day = (date: string) => [{ start: date, end: date }];
+  const capacity = (s: Sprint, daysOff: { priya?: DateRange[]; sofia?: DateRange[]; team?: DateRange[] } = {}): SprintCapacity => ({
     sprintId: s.id,
-    teamDaysOff: [],
+    teamDaysOff: daysOff.team ?? [],
     members: [
       { memberId: alex.id, activities: dev(6), daysOff: [] },
-      { memberId: priya.id, activities: dev(6), daysOff: [] },
+      { memberId: priya.id, activities: dev(6), daysOff: daysOff.priya ?? [] },
       { memberId: marcus.id, activities: [{ activity: 'Development', capacityPerDay: 4 }, { activity: 'Deployment', capacityPerDay: 2 }], daysOff: [] },
-      { memberId: sofia.id, activities: dev(5, 'Testing'), daysOff: [] },
+      { memberId: sofia.id, activities: dev(5, 'Testing'), daysOff: daysOff.sofia ?? [] },
       { memberId: dana.id, activities: dev(4, 'Design'), daysOff: [] },
     ],
-  }));
-  const currentCap = db.capacities[2];
-  currentCap.members[1].daysOff = [{ start: addDays(s3.startDate!, 3), end: addDays(s3.startDate!, 4) }];
-  currentCap.members[3].daysOff = [{ start: addDays(s3.startDate!, 9), end: addDays(s3.startDate!, 9) }];
-  db.capacities[3].teamDaysOff = [{ start: addDays(s4.startDate!, 4), end: addDays(s4.startDate!, 4) }];
+  });
+  db.capacities = [
+    capacity(s1),
+    capacity(s2),
+    capacity(s3, { priya: [{ start: addDays(s3.startDate, 3), end: addDays(s3.startDate, 4) }], sofia: day(addDays(s3.startDate, 9)) }),
+    capacity(s4, { team: day(addDays(s4.startDate, 4)) }),
+    capacity(s5),
+  ];
 
   let nextId = 1;
   let rank = 0;
@@ -58,7 +81,7 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
   const nowIso = new Date().toISOString();
   const clamp = (ts: string) => (ts > nowIso ? nowIso : ts);
 
-  const make = (type: WorkItemType, title: string, fields: Partial<WorkItem> = {}, created = addDays(s1.startDate!, -10)) => {
+  const make = (type: WorkItemType, title: string, fields: Partial<WorkItem> = {}, created = addDays(s1.startDate, -10)) => {
     const createdAt = clamp(at(created, 8));
     const item = blankWorkItem({
       id: nextId++,
@@ -90,15 +113,12 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
   };
 
   /** Apply a change at a point in time, recording history like the server would. */
-  const change = (item: WorkItem, date: string, hour: number, by: Member, patch: Partial<WorkItem>) => {
+  const change = (item: WorkItem, date: string, hour: number, by: Member, patch: DemoChange) => {
     const ts = clamp(at(date, hour));
     const changes: FieldChange[] = [];
-    for (const [k, v] of Object.entries(patch)) {
-      const old = (item as unknown as Record<string, unknown>)[k];
-      if (old === v) continue;
-      changes.push({ field: k, oldValue: old ?? null, newValue: v ?? null });
-      (item as unknown as Record<string, unknown>)[k] = v;
-    }
+    setField(item, changes, 'state', patch.state);
+    setField(item, changes, 'remainingWork', patch.remainingWork);
+    setField(item, changes, 'completedWork', patch.completedWork);
     if (patch.state) {
       item.reason = stateDef(item.type, patch.state)?.reason ?? item.reason;
       if (patch.state === 'Done') item.closedAt = ts;
@@ -145,12 +165,12 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
   const fOffline = make('Feature', 'Offline mode', { parentId: epicMobile.id, effort: 20, businessValue: 60, tags: ['Mobile'], targetDate: s4.finishDate });
   const fPush = make('Feature', 'Push notifications', { parentId: epicMobile.id, effort: 8, businessValue: 30, tags: ['Mobile'] });
   const fObservability = make('Feature', 'Observability', { parentId: epicPlatform.id, effort: 13, valueArea: 'Architectural' });
-  const fBackups = make('Feature', 'Automated backups', { parentId: epicPlatform.id, effort: 8, valueArea: 'Architectural', state: 'Done', closedAt: clamp(at(s2.finishDate!)) });
+  const fBackups = make('Feature', 'Automated backups', { parentId: epicPlatform.id, effort: 8, valueArea: 'Architectural', state: 'Done', closedAt: clamp(at(s2.finishDate)) });
 
   // ---- Sprint 1 & 2 (completed) ------------------------------------------------
-  const donePbi = (title: string, parent: WorkItem, sprint: Sprint, effort: number, who: Member, extra: Partial<WorkItem> = {}) => {
+  const donePbi = (title: string, parent: WorkItem, sprint: DatedSprint, effort: number, who: Member, extra: Partial<WorkItem> = {}) => {
     const item = make('Product Backlog Item', title, { parentId: parent.id, effort, assignedTo: who.id, iterationId: sprint.id, state: 'Committed', ...extra });
-    change(item, addDays(sprint.startDate!, 7), 15, who, { state: 'Done' });
+    change(item, addDays(sprint.startDate, 7), 15, who, { state: 'Done' });
     return item;
   };
   donePbi('Sign in with email and password', fAccount, s1, 5, alex);
@@ -168,10 +188,10 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
     state: 'Committed',
     reproSteps: p('1. Sign in<br>2. Open profile edit form<br>3. Wait 20 minutes while typing<br>4. Click Save') + p('<b>Actual:</b> changes are lost and user is redirected to sign-in.'),
   });
-  change(oldBug, addDays(s2.startDate!, 5), 11, sofia, { state: 'Done' });
+  change(oldBug, addDays(s2.startDate, 5), 11, sofia, { state: 'Done' });
 
   // ---- Sprint 3 (current) -------------------------------------------------------
-  const sprintDays = workingDaysBetween(s3.startDate!, s3.finishDate!, db.settings.workingDays);
+  const sprintDays = workingDaysBetween(s3.startDate, s3.finishDate, db.settings.workingDays);
   const elapsed = sprintDays.filter((d) => d <= today);
 
   interface TaskSpec {
@@ -193,8 +213,8 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
     tasks: TaskSpec[],
     extra: Partial<WorkItem> = {},
   ) => {
-    const pbi = make(type, title, { parentId: parent.id, effort, assignedTo: who.id, iterationId: s3.id, state: 'Approved', ...extra }, addDays(s3.startDate!, -12));
-    change(pbi, s3.startDate!, 9, alex, { state: 'Committed' });
+    const pbi = make(type, title, { parentId: parent.id, effort, assignedTo: who.id, iterationId: s3.id, state: 'Approved', ...extra }, addDays(s3.startDate, -12));
+    change(pbi, s3.startDate, 9, alex, { state: 'Committed' });
     for (const t of tasks) {
       const task = make(
         'Task',
@@ -208,19 +228,21 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
           remainingWork: t.hours,
           completedWork: 0,
         },
-        s3.startDate!,
+        s3.startDate,
       );
-      if (t.progress === undefined || elapsed.length === 0) continue;
+      if (t.progress === undefined) continue;
       const startIdx = Math.min(elapsed.length - 1, Math.floor(elapsed.length * t.progress * 0.5));
-      change(task, elapsed[startIdx], 10, t.who, { state: 'In Progress' });
+      const started = elapsed[startIdx];
+      if (started === undefined) continue;
+      change(task, started, 10, t.who, { state: 'In Progress' });
       const steps = Math.max(1, elapsed.length - startIdx - 1);
       let remaining = t.hours;
       for (let i = 1; i <= steps && startIdx + i < elapsed.length; i++) {
         const burn = Math.max(1, Math.round(t.hours / (steps + (t.done ? 0 : 1))));
         remaining = Math.max(t.done && i === steps ? 0 : 1, remaining - burn);
-        change(task, elapsed[startIdx + i], 16, t.who, { remainingWork: remaining, completedWork: t.hours - remaining });
+        change(task, elapsed[startIdx + i] ?? started, 16, t.who, { remainingWork: remaining, completedWork: t.hours - remaining });
       }
-      if (t.done) change(task, elapsed[elapsed.length - 1], 17, t.who, { state: 'Done', remainingWork: 0, completedWork: t.hours });
+      if (t.done) change(task, elapsed.at(-1) ?? started, 17, t.who, { state: 'Done', remainingWork: 0, completedWork: t.hours });
     }
     return pbi;
   };
@@ -331,14 +353,14 @@ export function buildDemoDatabase(today: string = todayLocal(new Date())): Datab
 
   // Some cross-links and discussion to make the form interesting.
   db.links.push(
-    { id: randomUUID(), sourceId: offlineSync.id, targetId: profile.id, type: 'Related', comment: 'Shares the profile sync API', createdBy: alex.name, createdAt: clamp(at(s3.startDate!)) },
-    { id: randomUUID(), sourceId: invoices.id, targetId: offlineSync.id, type: 'Predecessor', comment: '', createdBy: priya.name, createdAt: clamp(at(s3.startDate!)) },
+    { id: randomUUID(), sourceId: offlineSync.id, targetId: profile.id, type: 'Related', comment: 'Shares the profile sync API', createdBy: alex.name, createdAt: clamp(at(s3.startDate)) },
+    { id: randomUUID(), sourceId: invoices.id, targetId: offlineSync.id, type: 'Predecessor', comment: '', createdBy: priya.name, createdAt: clamp(at(s3.startDate)) },
   );
   profile.comments.push(
-    { id: randomUUID(), author: sofia.name, authorId: sofia.id, text: p('Should the email change flow block saving other fields until verified?'), createdAt: clamp(at(elapsed[0] ?? s3.startDate!, 11)), editedAt: null },
-    { id: randomUUID(), author: alex.name, authorId: alex.id, text: p('No - save the other fields right away and show a pending banner for the email. Updated the acceptance criteria.'), createdAt: clamp(at(elapsed[1] ?? s3.startDate!, 9)), editedAt: null },
+    { id: randomUUID(), author: sofia.name, authorId: sofia.id, text: p('Should the email change flow block saving other fields until verified?'), createdAt: clamp(at(elapsed[0] ?? s3.startDate, 11)), editedAt: null },
+    { id: randomUUID(), author: alex.name, authorId: alex.id, text: p('No - save the other fields right away and show a pending banner for the email. Updated the acceptance criteria.'), createdAt: clamp(at(elapsed[1] ?? s3.startDate, 9)), editedAt: null },
   );
-  invoices.hyperlinks.push({ id: randomUUID(), url: 'https://example.com/design/invoice-template', comment: 'Approved invoice template', addedBy: priya.name, addedAt: clamp(at(s3.startDate!)) });
+  invoices.hyperlinks.push({ id: randomUUID(), url: 'https://example.com/design/invoice-template', comment: 'Approved invoice template', addedBy: priya.name, addedAt: clamp(at(s3.startDate)) });
 
   db.nextWorkItemId = nextId;
   return db;

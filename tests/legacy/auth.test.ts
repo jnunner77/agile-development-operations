@@ -5,7 +5,6 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, createAuth, type Auth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
 const DAY = 86_400_000;
@@ -22,7 +21,7 @@ beforeEach(() => {
   clock = Date.parse('2026-01-01T09:00:00Z');
   auth = createAuth(store, { now: () => clock });
   // Rate limits are covered in security.test.ts; these tests make many attempts from one IP.
-  app = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
+  app = createApp({ store, auth, security: false });
 });
 
 afterEach(() => {
@@ -263,7 +262,7 @@ describe('sign-in', () => {
   it('can be forced off for recovery', async () => {
     await setup();
     const recovery = new Store(dir, () => emptyDatabase());
-    const forced = createApp({ store: recovery, snapshots: new SnapshotManager(recovery), auth: createAuth(recovery, { disabled: true }) });
+    const forced = createApp({ store: recovery, auth: createAuth(recovery, { disabled: true }) });
     expect((await request(forced).get('/api/auth/status')).body).toMatchObject({ enabled: false, overridden: true });
     expect((await request(forced).get('/api/bootstrap')).status).toBe(200);
   });
@@ -272,7 +271,7 @@ describe('sign-in', () => {
     const ada = await member('Ada Admin', 'ada');
     await request(app).patch(`/api/auth/accounts/${ada.id}`).send({ isAdmin: true });
     const forcedAuth = createAuth(store, { disabled: true });
-    const forced = createApp({ store, snapshots: new SnapshotManager(store), auth: forcedAuth, security: false });
+    const forced = createApp({ store, auth: forcedAuth, security: false });
     const res = await request(forced).put('/api/auth/settings').send({ enabled: true });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/password/);
@@ -301,7 +300,7 @@ describe('deployment behind a proxy', () => {
     };
     // Without trust proxy the forwarded header is ignored.
     expect(await cookieFor(app)).not.toMatch(/Secure/);
-    const proxied = createApp({ store, snapshots: new SnapshotManager(store), auth, trustProxy: 1 });
+    const proxied = createApp({ store, auth, trustProxy: 1 });
     expect(await cookieFor(proxied)).toMatch(/Secure/);
   });
 });

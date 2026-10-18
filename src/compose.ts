@@ -79,6 +79,20 @@ import { GitHubPayloadReader } from '#infrastructure/github/payloads.ts';
 import { FileGitHubIntegrationRepository, IntegrationsFile } from '#infrastructure/integrations/integrations-file.ts';
 import { SerialQueue } from '#infrastructure/serial-writes.ts';
 import { integrationRoutes } from '#presentation/integrations/routes.ts';
+import { DeleteSnapshot } from '#application/backups/delete-snapshot.ts';
+import { DownloadSnapshot } from '#application/backups/download-snapshot.ts';
+import { ExportBackup } from '#application/backups/export-backup.ts';
+import { ImportBackup } from '#application/backups/import-backup.ts';
+import { ListSnapshots } from '#application/backups/list-snapshots.ts';
+import { ResetProject } from '#application/backups/reset-project.ts';
+import { RestoreSnapshot } from '#application/backups/restore-snapshot.ts';
+import { TakeScheduledSnapshot } from '#application/backups/take-scheduled-snapshot.ts';
+import { TakeSnapshot } from '#application/backups/take-snapshot.ts';
+import { UpdateSnapshot } from '#application/backups/update-snapshot.ts';
+import { StoreProject } from '#infrastructure/json-store/store-project.ts';
+import { runEvery } from '#infrastructure/scheduler.ts';
+import { FileSnapshotRepository } from '#infrastructure/snapshots/snapshot-files.ts';
+import { backupRoutes } from '#presentation/backups/routes.ts';
 import { createExpressApp, type AppOptions } from '../server/app.ts';
 
 export interface AuthOptions {
@@ -152,6 +166,8 @@ export function composeDeps(store: Store, auth: Auth, events: LocalEventBus): Ap
     settings: new JsonSettingsRepository(unitOfWork),
     team: new StoreTeamDirectory(store),
     ...signIn,
+    snapshots: new FileSnapshotRepository(store.dataDir),
+    project: new StoreProject(store),
     github: new FileGitHubIntegrationRepository(new IntegrationsFile(store.dataDir)),
     deliveries: new MemoryDeliveryLog(),
     webhookSignatures: new HmacSignatures(),
@@ -222,17 +238,44 @@ export function composeRoutes(deps: AppDeps, signInDeps: SignInDeps, context: Re
     updateGitHubSettings: new UpdateGitHubSettings(deps),
     rotateWebhookSecret: new RotateWebhookSecret(deps),
   });
-  return combineRoutes(signIn, workItems, team, integrations);
+  const backups = backupRoutes({
+    identify,
+    heavyOperation: context.heavyOperation,
+    listSnapshots: new ListSnapshots(deps),
+    takeSnapshot: new TakeSnapshot(deps),
+    updateSnapshot: new UpdateSnapshot(deps),
+    deleteSnapshot: new DeleteSnapshot(deps),
+    restoreSnapshot: new RestoreSnapshot(deps),
+    downloadSnapshot: new DownloadSnapshot(deps),
+    exportBackup: new ExportBackup(deps),
+    importBackup: new ImportBackup(deps),
+    resetProject: new ResetProject(deps),
+  });
+  return combineRoutes(signIn, workItems, team, integrations, backups);
+}
+
+/** How often the server checks whether a scheduled snapshot is due. */
+const BACKUP_CHECK_MS = 10 * 60_000;
+
+export interface ComposedApp {
+  readonly app: ReturnType<typeof createExpressApp>;
+  /** Take scheduled snapshots when due, checking now and every 10 minutes. Returns a function that stops it. */
+  startBackupSchedule(): () => void;
 }
 
 /** The whole app: the layered slices plugged into the Express server that still hosts the rest. */
 export function createApp(options: CreateAppOptions) {
+  return composeApp(options).app;
+}
+
+/** The app, and the background work that comes with it. */
+export function composeApp(options: CreateAppOptions): ComposedApp {
   const { events = new LocalEventBus(), auth = createAuth(options.store), ...rest } = options;
   const deps = composeDeps(options.store, auth, events);
   // Sign-in keeps its own clock, so tests can move time for sessions, lockouts and expiry alone.
   const signInDeps: SignInDeps = { ...deps, clock: auth.deps.clock };
   const authenticator = new Authenticator(new IdentifyCaller(signInDeps));
-  return createExpressApp({
+  const app = createExpressApp({
     ...rest,
     signIn: {
       authenticator,
@@ -242,4 +285,9 @@ export function createApp(options: CreateAppOptions) {
     },
     layeredRoutes: (context) => composeRoutes(deps, signInDeps, context),
   });
+  const scheduled = new TakeScheduledSnapshot(deps);
+  return {
+    app,
+    startBackupSchedule: () => runEvery(BACKUP_CHECK_MS, () => scheduled.execute(), (error) => console.error('Automatic snapshot failed', error)),
+  };
 }

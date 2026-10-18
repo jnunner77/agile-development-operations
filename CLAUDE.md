@@ -2,8 +2,9 @@
 
 Boards is a self-hosted Azure DevOps-style backlog, board and sprint tool: a React + Vite
 client (`client/`) and a TypeScript server with a JSON file store. The server follows an onion
-architecture in `src/` (shared, domain, application, infrastructure, presentation); the features
-not yet moved there (snapshots and backups) still run on the Express code in `server/`.
+architecture in `src/` (shared, domain, application, infrastructure, presentation). Every feature
+has moved there; `server/` still holds the Express request pipeline (rate limits, the live update
+stream, bootstrap, static files).
 See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
 ## Workflow
@@ -64,11 +65,12 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
     `adminAccessOf`); routes that need it check before reading the request, as the Express routes
     did. Who is calling comes from `IdentifyCaller` (session cookie or API token), and
     `presentation/sign-in/gate.ts` decides which requests need signing in, also for `server/`.
-- No new runtime dependencies in `src/`. Express and zod remain only in `server/` until the
-  features there move into the layers. Move one feature at a time, as the work items slice did.
-- Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`, or
-  `store.transact` in `server/`), so it is validated, persisted, recorded in work item history
-  and broadcast to browsers as deltas, or not applied at all.
+- No new runtime dependencies in `src/`. Express remains only in `server/` until the request
+  pipeline moves into the layers too.
+- Every change runs as one unit of work (`StoreUnitOfWork` over `store.transactAsync`), so it is
+  validated, persisted, recorded in work item history and broadcast to browsers as deltas, or not
+  applied at all. Replacing the whole project (restore, import, reset) runs exclusively through
+  the `ProjectStore` port, after a safety snapshot.
 - Secrets (password hashes, API token digests, webhook secrets) live in their own files in the
   data directory (`auth.json`, `api-tokens.json`, `integrations.json`, written 0600), never in
   `db.json`, snapshots, exports or API responses. Sessions, failed sign-in counts and recent

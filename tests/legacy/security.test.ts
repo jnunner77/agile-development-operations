@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, createAuth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Security, TokenBucket, type SecurityOptions } from '../../server/security.ts';
-import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
 let dir: string;
@@ -26,7 +25,7 @@ afterEach(() => {
 function build(options: Partial<SecurityOptions> = {}) {
   const auth = createAuth(store, { now: () => clock });
   const security = new Security(options, () => clock);
-  const app = createApp({ store, snapshots: new SnapshotManager(store), auth, security, trustProxy: 1 });
+  const app = createApp({ store, auth, security, trustProxy: 1 });
   return { app, auth, security };
 }
 

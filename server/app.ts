@@ -1,19 +1,14 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { z, ZodError } from 'zod';
-import { HttpError, badRequest } from './errors.ts';
-import { adminAccessOf, mayModerateCommentsOf, requireAdmin } from '#application/access.ts';
-import { httpFailure } from '#presentation/http/errors.ts';
+import { HttpError } from './errors.ts';
+import { adminAccessOf, mayModerateCommentsOf } from '#application/access.ts';
 import type { Caller } from '#application/caller.ts';
 import { MissingRecordError, RejectedChangeError, type Store } from '#infrastructure/json-store/store.ts';
 import type { RequestContext } from '#presentation/http/context.ts';
 import type { Router } from '#presentation/http/router.ts';
 import type { Authenticator, RequestIdentity } from '#presentation/sign-in/authenticator.ts';
 import { gate } from '#presentation/sign-in/gate.ts';
-import type { SnapshotManager } from './snapshots.ts';
-import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { buildDemoDatabase } from './seed.ts';
 import { Security, retryAfterOf, securityHeaders } from './security.ts';
 
 /** Routes served by the layered code (src/), relative to /api. */
@@ -31,7 +26,6 @@ export interface AppOptions {
   /** Builds the layered routes, given what the pipeline knows about each request. */
   layeredRoutes: (context: RequestContext) => LayeredRoutes;
   signIn: SignInGlue;
-  snapshots: SnapshotManager;
   staticDir?: string;
   /**
    * Express "trust proxy" setting. Set it when running behind a reverse proxy (e.g. Caddy)
@@ -42,9 +36,8 @@ export interface AppOptions {
   security?: Security | false;
 }
 
-/** Largest JSON body accepted, except for importing a backup (admins only). */
+/** Largest JSON body accepted by the Express routes. */
 const JSON_LIMIT = '2mb';
-const IMPORT_LIMIT = '50mb';
 
 /** Resolve the display name of the caller from the X-User header (a member id or a name). */
 function userName(store: Store, req: Request): string {
@@ -90,13 +83,12 @@ export function createExpressApp({
   store,
   layeredRoutes,
   signIn,
-  snapshots,
   staticDir,
   trustProxy,
   security = new Security(),
 }: AppOptions) {
   // Who is calling is worked out by the middleware below and handed to the layered routes.
-  const requests = new WeakMap<object, { caller: Caller; identity: RequestIdentity; secure: boolean }>();
+  const requests = new WeakMap<object, { caller: Caller; identity: RequestIdentity; secure: boolean; heavy: () => boolean }>();
   const known = (req: object) => {
     const found = requests.get(req);
     if (!found) throw new Error('A layered route ran before the caller was identified');
@@ -106,6 +98,7 @@ export function createExpressApp({
     caller: (req) => requests.get(req)?.caller ?? ANONYMOUS,
     identity: (req) => known(req).identity,
     secure: (req) => known(req).secure,
+    heavyOperation: (req) => known(req).heavy(),
   });
   const ownedByLayers = (req: Request) => req.path.toLowerCase().startsWith('/api/') && layered.owns(req.method, req.path.slice(4));
 
@@ -114,10 +107,10 @@ export function createExpressApp({
   if (trustProxy !== undefined) app.set('trust proxy', trustProxy);
   app.use(securityHeaders);
   if (security) app.use(security.firewall);
-  // Small bodies everywhere; the backup import route parses its own larger body, but only
-  // after the caller has been checked as an administrator.
+  // Small bodies for the Express routes; the layered routes read their own (the backup import, a
+  // larger one, only once the caller is known to be an administrator).
   const smallJson = express.json({ limit: JSON_LIMIT });
-  app.use((req, res, next) => (req.path === '/api/backup/import' || ownedByLayers(req) ? next() : smallJson(req, res, next)));
+  app.use((req, res, next) => (ownedByLayers(req) ? next() : smallJson(req, res, next)));
 
   const api = express.Router();
 
@@ -141,17 +134,20 @@ export function createExpressApp({
     }, next);
   };
 
-  /** Restrict a route to administrators while sign-in is on; API tokens never. Same rule as the layers. */
-  const admin = (req: Request, _res: Response, next: NextFunction) => {
-    const access = requireAdmin(callerOf(req));
-    if (!access.ok) {
-      const failure = httpFailure(access.error);
-      throw new HttpError(failure.status, failure.message);
+  /** Count a snapshot or backup operation against the caller's limit; answer 429 when over it. */
+  const heavyOperation = (req: Request, res: Response): boolean => {
+    if (!security) return true;
+    try {
+      security.heavy(req, res, () => undefined);
+      return true;
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      const retryAfter = retryAfterOf(err);
+      if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
+      res.status(err.status).json({ error: err.message });
+      return false;
     }
-    next();
   };
-  const pass = (_req: Request, _res: Response, next: NextFunction) => next();
-  const heavy = security ? security.heavy : pass;
 
   api.use((_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -202,7 +198,7 @@ export function createExpressApp({
   // project settings and the GitHub integration.
   api.use((req, res, next) => {
     if (!layered.owns(req.method, req.path)) return next();
-    requests.set(req, { caller: callerOf(req), identity: identityOf(req), secure: req.secure });
+    requests.set(req, { caller: callerOf(req), identity: identityOf(req), secure: req.secure, heavy: () => heavyOperation(req, res) });
     layered.handle(req, res).then((handled) => {
       if (!handled) next();
     }, next);
@@ -256,65 +252,6 @@ export function createExpressApp({
     });
   });
 
-  // ---- Snapshots & backups ----------------------------------------------------
-  const snapshotInput = z.object({ name: z.string().trim().max(200).optional(), description: z.string().max(2000).optional() }).strict();
-
-  api.get('/snapshots', (_req, res) => {
-    res.json(snapshots.list());
-  });
-  api.post('/snapshots', heavy, (req, res) => {
-    const input = snapshotInput.parse(req.body ?? {});
-    res.status(201).json(snapshots.create(input.name ?? '', input.description ?? '', 'manual', userName(store, req)));
-  });
-  api.patch('/snapshots/:id', admin, (req, res) => {
-    res.json(snapshots.update(String(req.params.id), snapshotInput.parse(req.body)));
-  });
-  api.delete('/snapshots/:id', admin, (req, res) => {
-    snapshots.delete(String(req.params.id));
-    res.status(204).end();
-  });
-  api.post('/snapshots/:id/restore', admin, heavy, async (req, res) => {
-    const safety = await snapshots.restore(String(req.params.id), userName(store, req), req.header('x-client-id'));
-    res.json({ safetySnapshot: safety });
-  });
-  api.get('/snapshots/:id/download', heavy, (req, res) => {
-    const file = snapshots.filePath(String(req.params.id));
-    res.download(file, `snapshot-${req.params.id}.json`);
-  });
-
-  api.get('/backup/export', heavy, (req, res) => {
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const slug = store.db.settings.projectName.replace(/[^\w-]+/g, '-').toLowerCase();
-    res.setHeader('Content-Disposition', `attachment; filename="${slug}-backup-${stamp}.json"`);
-    res.json({
-      format: 'ado-clone-backup',
-      exportedAt: new Date().toISOString(),
-      exportedBy: userName(store, req),
-      data: store.db,
-    });
-  });
-  api.post('/backup/import', admin, heavy, express.json({ limit: IMPORT_LIMIT }), async (req, res) => {
-    try {
-      const safety = await snapshots.import(req.body, userName(store, req), req.header('x-client-id'));
-      res.json({ safetySnapshot: safety });
-    } catch (err) {
-      if (err instanceof HttpError) throw err;
-      throw badRequest(err instanceof Error ? err.message : 'Invalid backup file');
-    }
-  });
-  api.post('/backup/reset', admin, heavy, async (req, res) => {
-    const { mode } = z.object({ mode: z.enum(['empty', 'demo']) }).parse(req.body);
-    const safety = await store.writes.run(async () => {
-      const settings = { ...store.db.settings };
-      const next = mode === 'demo' ? buildDemoDatabase() : emptyDatabase({ projectName: settings.projectName, teamName: settings.teamName, backup: settings.backup, workingDays: settings.workingDays, areaPaths: settings.areaPaths });
-      store.check(next);
-      const snapshot = snapshots.create('Before reset', `Automatic safety snapshot taken before resetting to ${mode === 'demo' ? 'demo data' : 'an empty project'}`, 'pre-reset', userName(store, req));
-      store.replace(next, req.header('x-client-id'));
-      return snapshot;
-    });
-    res.json({ safetySnapshot: safety });
-  });
-
   api.use((_req, res) => {
     res.status(404).json({ error: 'Not found' });
   });
@@ -327,11 +264,6 @@ export function createExpressApp({
   }
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ZodError) {
-      const issue = err.issues[0];
-      const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
-      return res.status(400).json({ error: `${where}${issue?.message ?? 'Invalid request'}` });
-    }
     if (err instanceof MissingRecordError) return res.status(404).json({ error: err.message });
     if (err instanceof RejectedChangeError) return res.status(400).json({ error: err.message });
     if (err instanceof HttpError) {

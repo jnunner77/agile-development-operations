@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, createAuth, type Auth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Security } from '../../server/security.ts';
-import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
 const DAY = 86_400_000;
@@ -21,7 +20,7 @@ beforeEach(() => {
   store = new Store(dir, () => emptyDatabase());
   clock = Date.parse('2026-01-01T09:00:00Z');
   auth = createAuth(store, { now: () => clock });
-  app = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
+  app = createApp({ store, auth, security: false });
 });
 
 afterEach(() => {
@@ -220,7 +219,6 @@ describe('API tokens', () => {
   it('count bad tokens toward the temporary IP block', async () => {
     const guarded = createApp({
       store,
-      snapshots: new SnapshotManager(store),
       auth,
       trustProxy: 1,
       security: new Security({ ban: { authFailures: 3, violations: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, () => clock),
