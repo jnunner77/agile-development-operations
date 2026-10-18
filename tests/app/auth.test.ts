@@ -91,7 +91,7 @@ describe('sign-in', () => {
     const agent = request.agent(app);
     const ok = await agent.post('/api/auth/login').send({ username: 'ADA', password: 'correct horse' });
     expect(ok.body.status).toBe('ok');
-    expect(ok.headers['set-cookie'][0]).toMatch(/HttpOnly/);
+    expect(ok.headers['set-cookie']?.[0]).toMatch(/HttpOnly/);
     expect((await agent.get('/api/bootstrap')).status).toBe(200);
 
     expect((await request(app).post('/api/auth/login').send({ username: 'ada' })).status).toBe(401);

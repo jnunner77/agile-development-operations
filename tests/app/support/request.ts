@@ -3,12 +3,14 @@
 
 import http from 'node:http';
 
-// Headers and body are loosely typed, as supertest's were: tests poke straight into them.
 export interface TestResponse {
   readonly status: number;
   /** Lower-case names; set-cookie is a list. */
-  readonly headers: Record<string, any>;
-  /** Parsed JSON for JSON answers, else an empty object. */
+  readonly headers: http.IncomingHttpHeaders;
+  /**
+   * Parsed JSON for JSON answers, else an empty object. A deliberate exception to the no-`any`
+   * rule in CLAUDE.md: tests read arbitrary answers, as they did through supertest's `any`.
+   */
   readonly body: any;
   readonly text: string;
 }
@@ -104,8 +106,9 @@ class TestRequest implements PromiseLike<TestResponse> {
           if (/json/i.test(res.headers['content-type'] ?? '') && text) {
             try {
               body = JSON.parse(text);
-            } catch {
-              body = {};
+            } catch (error) {
+              reject(new Error(`${this.#method} ${this.#path} answered with malformed JSON (${String(error)}): ${text.slice(0, 200)}`));
+              return;
             }
           }
           resolve({ status: res.statusCode ?? 0, headers: res.headers, body, text });

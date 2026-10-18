@@ -42,7 +42,7 @@ describe('expect', () => {
     fails(() => expect([{ a: 1 }, { a: 2 }]).toMatchObject([{ a: 1 }]));
     fails(() => expect([1]).toHaveLength(2));
     fails(() => expect('abc').toMatch(/z/));
-    fails(() => expect(5).toMatch(/5/));
+    fails(() => expect(5).toMatch(/5/), /needs a string/);
     fails(() => expect([1]).toContain(2));
     fails(() => expect('abc').not.toContain('b'));
     fails(() => expect(undefined).toBeNull());
@@ -59,6 +59,26 @@ describe('expect', () => {
     assert.throws(() => expect(1, 'the status').toBe(2), { message: 'the status: expected 1 to be 2' });
     assert.equal(equals(new Date(1), new Date(1)), true);
     assert.equal(equals(new Date(1), new Date(2)), false);
+  });
+
+  it('refuses values of the wrong kind, negated or not', () => {
+    const wrongKind = /needs/;
+    assert.throws(() => expect(undefined).not.toMatch(/x/), wrongKind);
+    assert.throws(() => expect(undefined).toMatch(/x/), wrongKind);
+    assert.throws(() => expect(undefined).not.toHaveProperty('hash'), wrongKind);
+    assert.throws(() => expect(new Set([1])).not.toContain(1), wrongKind);
+    assert.throws(() => expect(5).not.toHaveLength(1), wrongKind);
+    assert.throws(() => expect('5').not.toBeGreaterThan(1), wrongKind);
+    assert.throws(() => expect(null).toBeLessThanOrEqual(1), wrongKind);
+  });
+
+  it('never treats different kinds of object as equal', () => {
+    assert.equal(equals(new Map([[1, 2]]), {}), false);
+    assert.equal(equals(new Date(0), {}), false);
+    assert.equal(equals([], {}), false);
+    assert.equal(equals(new Error('a'), new Error('b')), false);
+    assert.equal(equals(new Error('a'), new Error('a')), true);
+    fails(() => expect({ m: new Map([[1, 2]]) }).toMatchObject({ m: {} }));
   });
 });
 
@@ -90,6 +110,29 @@ describe('request', () => {
     await agent.post('/logout').send({});
     await agent.get('/me');
     assert.equal(seen[5]?.cookie, undefined);
+    server.close();
+  });
+
+  it('takes an answer sent before a large body was read', async () => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(401, { 'Content-Type': 'application/json' }).end('{"error":"Invalid signature"}');
+    });
+    const res = await request(server).post('/hook').set('Content-Type', 'application/json').send('x'.repeat(11 * 1024 * 1024));
+    assert.deepEqual([res.status, res.body], [401, { error: 'Invalid signature' }]);
+    server.close();
+  });
+
+  it('uses a server the test already started, and leaves it running', async () => {
+    const server = http.createServer((_req, res) => res.writeHead(204).end());
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    assert.equal((await request(server).get('/')).status, 204);
+    assert.equal(server.listening, true);
+    server.close();
+  });
+
+  it('fails on a malformed JSON answer instead of hiding it', async () => {
+    const server = http.createServer((_req, res) => res.writeHead(200, { 'Content-Type': 'application/json' }).end('{oops'));
+    await assert.rejects(async () => request(server).get('/broken'), /GET \/broken answered with malformed JSON/);
     server.close();
   });
 });
