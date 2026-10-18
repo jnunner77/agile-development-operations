@@ -216,8 +216,8 @@ src/
                    health and the built client.
   main.ts          Starts the server. compose.ts wires the concrete classes together.
 client/   React + Vite single-page app (zustand store, react-router). Uses the domain's pure code.
-tests/    node:test tests mirroring src/, plus the vitest suites in tests/legacy that drive the
-          whole app over HTTP.
+tests/    node:test tests mirroring src/, plus the suites in tests/app that drive the whole app
+          over HTTP (with small expect and request helpers in tests/app/support).
 e2e/      Playwright smoke tests that drive the UI
 ```
 
@@ -234,7 +234,7 @@ and the changed entities are returned as a *delta* and broadcast to other client
 
 ```bash
 npm run typecheck                 # tsc -b: also checks the layer boundaries
-npm test                          # node:test layer tests, then the vitest API suites
+npm test                          # every test, on node:test: the layers and the whole app
 npm run build && npm start &      # then, against a fresh demo database:
 BASE_URL=http://localhost:4000 npm run test:e2e
 BASE_URL=http://localhost:4000 npm run test:e2e:mobile   # same, as a phone (touch, small screen)

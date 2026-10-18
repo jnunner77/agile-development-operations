@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import request from './support/request.ts';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { expect } from './support/expect.ts';
 import { createApp, createAuth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
@@ -26,7 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  mock.restoreAll();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -126,9 +127,9 @@ describe('webhook security', () => {
     await create('Task');
     const payload = { ref: 'wi/1', ref_type: 'branch', repository: REPO, sender: SENDER };
     // The first attempt fails while being processed; GitHub then redelivers it with the same id.
-    vi.spyOn(store, 'save').mockImplementationOnce(() => {
+    mock.method(store, 'save', () => {
       throw new Error('temporary failure');
-    });
+    }, { times: 1 });
     expect((await deliver('create', payload, { id: 'retry' })).status).toBe(500);
     expect(item(1).devLinks).toHaveLength(0);
     const again = await deliver('create', payload, { id: 'retry' });

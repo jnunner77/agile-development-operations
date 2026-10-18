@@ -1,6 +1,6 @@
 {
-  // vitest suites that drive the whole app over HTTP. They move to node:test with the slices
-  // they cover.
+  // node:test suites that drive the whole app over HTTP (and the client's store), through the
+  // helpers in support/.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 import { applyDelta, setDatabase, useStore } from '../../client/src/store.ts';
 import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
 

@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import request from './support/request.ts';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 import { createApp } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';

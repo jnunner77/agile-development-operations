@@ -16,9 +16,4 @@ export default defineConfig({
       '/api': { target: `http://localhost:${apiPort}`, changeOrigin: true },
     },
   },
-  test: {
-    root: '.',
-    include: ['tests/legacy/**/*.test.ts'],
-    environment: 'node',
-  },
-} as any);
+});
