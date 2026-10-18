@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 
 // deploy/backup.sh runs `docker compose exec … tar`; a stand-in `docker` on PATH prints a tiny archive.
 let dir: string;

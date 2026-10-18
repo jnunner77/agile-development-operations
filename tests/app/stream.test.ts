@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 import { StreamVersion, loadFresh } from '../../client/src/lib/stream.ts';
 
 describe('live-update stream version', () => {

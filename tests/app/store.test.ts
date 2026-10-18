@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
+import { expect } from './support/expect.ts';
 import { blankWorkItem, emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 
@@ -14,15 +15,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  mock.restoreAll();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 /** Make the next write of the database fail, as on a full disk. */
 function failNextWrite() {
-  vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
+  mock.method(fs, 'writeFileSync', () => {
     throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
-  });
+  }, { times: 1 });
 }
 
 const onDisk = () => JSON.parse(fs.readFileSync(path.join(dir, 'db.json'), 'utf8'));
@@ -35,7 +36,7 @@ describe('store', () => {
   it('leaves the live database, its version and browsers alone when a change cannot be saved', () => {
     addTask('Saved');
     const version = store.db.version;
-    const sent = vi.fn();
+    const sent = mock.fn();
     store.subscribe(sent);
 
     failNextWrite();
@@ -55,11 +56,11 @@ describe('store', () => {
   it('removes the half-written temp file when the final rename fails', () => {
     addTask('Saved');
     const version = store.db.version;
-    const sent = vi.fn();
+    const sent = mock.fn();
     store.subscribe(sent);
-    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+    mock.method(fs, 'renameSync', () => {
       throw Object.assign(new Error('EIO: i/o error, rename'), { code: 'EIO' });
-    });
+    }, { times: 1 });
     expect(() => addTask('Lost')).toThrow(/EIO/);
     expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
     expect(store.db.version).toBe(version);
@@ -70,7 +71,7 @@ describe('store', () => {
   it('leaves everything alone when a replacement cannot be saved', () => {
     addTask('Current');
     const version = store.db.version;
-    const sent = vi.fn();
+    const sent = mock.fn();
     store.subscribe(sent);
 
     failNextWrite();

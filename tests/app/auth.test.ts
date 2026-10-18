@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import request from './support/request.ts';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 import { createApp, createAuth, type Auth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
@@ -90,7 +91,7 @@ describe('sign-in', () => {
     const agent = request.agent(app);
     const ok = await agent.post('/api/auth/login').send({ username: 'ADA', password: 'correct horse' });
     expect(ok.body.status).toBe('ok');
-    expect(ok.headers['set-cookie'][0]).toMatch(/HttpOnly/);
+    expect(ok.headers['set-cookie']?.[0]).toMatch(/HttpOnly/);
     expect((await agent.get('/api/bootstrap')).status).toBe(200);
 
     expect((await request(app).post('/api/auth/login').send({ username: 'ada' })).status).toBe(401);

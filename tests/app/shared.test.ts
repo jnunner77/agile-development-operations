@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'node:test';
+import { expect } from './support/expect.ts';
 import { computeBurndown, fieldValueAt } from '#domain/burndown.ts';
 import { addDays, countDaysOff, isValidDate, workingDaysBetween } from '#domain/dates.ts';
 import { computeCapacity, computeSprintWork, defaultSprint, nextSprint, suggestNextSprint } from '#domain/sprints.ts';

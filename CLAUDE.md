@@ -78,5 +78,6 @@ sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` e
 - No non-null assertions (`!`), `any`, or casts except branding ids at trust boundaries and typing
   raw JSON in infrastructure (which the domain then validates).
 - Tests: `node:test` tests in `tests/<layer>/` for code in `src/` (domain without fakes;
-  application with the in-memory adapters in `src/infrastructure/memory/`). The vitest suites
-  in `tests/legacy/` drive the whole app over HTTP; keep them passing.
+  application with the in-memory adapters in `src/infrastructure/memory/`). The suites in
+  `tests/app/` drive the whole app over HTTP through `tests/app/support/` (`expect` matchers and a
+  `request(app)` client); keep them passing. Everything runs on `node:test`.
