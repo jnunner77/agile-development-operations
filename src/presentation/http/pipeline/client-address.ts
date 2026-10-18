@@ -47,14 +47,35 @@ function bytesOf(address: string): Uint8Array | null {
   return bytes;
 }
 
-/** A matcher for one address or range: "10.0.0.1", "10.0.0.0/8", "fd00::/8". */
+/** The prefix length a dotted IPv4 netmask stands for ("255.255.0.0" is 16), or null if it isn't one. */
+function netmaskBits(mask: string): number | null {
+  if (!net.isIPv4(mask)) return null;
+  const bits = mask
+    .split('.')
+    .map((part) => Number(part).toString(2).padStart(8, '0'))
+    .join('');
+  const ones = bits.indexOf('0') === -1 ? 32 : bits.indexOf('0');
+  return /^1*0*$/.test(bits) && ones >= 1 ? ones : null;
+}
+
+/** The prefix length a range gives, or null if it is malformed: "8" (1–32 or 1–128), or a netmask. */
+function prefixBits(bits: string, v4: boolean): number | null {
+  if (/^\d+$/.test(bits)) {
+    const n = Number(bits);
+    return n >= 1 && n <= (v4 ? 32 : 128) ? n : null;
+  }
+  return v4 ? netmaskBits(bits) : null;
+}
+
+/** A matcher for one address or range: "10.0.0.1", "10.0.0.0/8", "10.0.0.0/255.0.0.0", "fd00::/8". */
 function rangeMatcher(entry: string): ((address: string) => boolean) | null {
-  const [addr = '', bits] = entry.split('/');
+  const [addr = '', bits, extra] = entry.split('/');
   const base = bytesOf(addr);
-  if (!base) return null;
+  if (!base || extra !== undefined) return null;
   const v4 = net.isIPv4(addr);
-  const prefix = bits === undefined ? 128 : Number(bits) + (v4 ? 96 : 0);
-  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 128) return null;
+  const bitsGiven = bits === undefined ? (v4 ? 32 : 128) : prefixBits(bits, v4);
+  if (bitsGiven === null) return null;
+  const prefix = bitsGiven + (v4 ? 96 : 0);
   return (address) => {
     const bytes = bytesOf(address);
     if (!bytes) return false;

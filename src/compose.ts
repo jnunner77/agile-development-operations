@@ -95,6 +95,7 @@ import { FileSnapshotRepository } from '#infrastructure/snapshots/snapshot-files
 import { backupRoutes } from '#presentation/backups/routes.ts';
 import http from 'node:http';
 import { LoadProject } from '#application/project/load-project.ts';
+import { ResolveCaller } from '#application/sign-in/resolve-caller.ts';
 import { WatchChanges } from '#application/project/watch-changes.ts';
 import { StoreChangeFeed } from '#infrastructure/json-store/store-change-feed.ts';
 import { MissingRecordError, RejectedChangeError } from '#infrastructure/json-store/store.ts';
@@ -307,7 +308,7 @@ export function composeApp(options: CreateAppOptions): ComposedApp {
     routes: (context) => composeRoutes(deps, signInDeps, context),
     authenticator,
     signInEnabled: () => auth.enabled,
-    team: deps.team,
+    resolveCaller: new ResolveCaller(deps),
     loadProject: new LoadProject(deps),
     watchChanges: new WatchChanges(deps),
     security,

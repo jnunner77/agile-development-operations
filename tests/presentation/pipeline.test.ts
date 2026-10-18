@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import type { Caller } from '#application/caller.ts';
+import { ResolveCaller } from '#application/sign-in/resolve-caller.ts';
+import type { Member } from '#domain/types.ts';
 import type { Identity } from '#application/sign-in/identity.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { MemoryChangeFeed } from '#infrastructure/memory/change-feed.ts';
@@ -16,6 +18,8 @@ import { Security } from '#presentation/http/pipeline/security.ts';
 import { staticFiles } from '#presentation/http/pipeline/static-files.ts';
 import { sendJson } from '#presentation/http/respond.ts';
 import { Router } from '#presentation/http/router.ts';
+
+const BO: Member = { id: 'm2', name: 'Bo', username: 'bo', email: '', color: '#0078d4', active: true };
 
 function request(remoteAddress: string, headers: Record<string, string> = {}): http.IncomingMessage {
   const socket = new Socket();
@@ -47,7 +51,10 @@ describe('client addresses behind proxies', () => {
     assert.equal(clientAddress(request('::1', forwarded), trustFunction('loopback, uniquelocal')).ip, '203.0.113.9');
     assert.equal(clientAddress(request('fd00::5', { 'x-forwarded-for': '2001:db8::1' }), trustFunction('fc00::/7')).ip, '2001:db8::1');
     assert.equal(clientAddress(request('192.0.2.1', forwarded), trustFunction('loopback')).secure, false);
-    assert.throws(() => trustFunction('not-an-address'), /TRUST_PROXY/);
+    assert.equal(clientAddress(request('10.1.2.3', forwarded), trustFunction('10.0.0.0/255.0.0.0')).ip, '203.0.113.9');
+    for (const bad of ['not-an-address', '10.0.0.0/', '10.0.0.0/0', '10.0.0.0/-1', '10.0.0.0/33', '10.0.0.0/255.0.255.0', '10.0.0.0/0.0.0.0', '::1/129', '10.0.0.0/8/8']) {
+      assert.throws(() => trustFunction(bad), /TRUST_PROXY/, bad);
+    }
   });
 });
 
@@ -163,7 +170,7 @@ describe('the request pipeline', () => {
         stillSignedIn: async () => true,
       },
       signInEnabled: () => signInOn,
-      team: { all: async () => [{ id: 'm2', name: 'Bo', username: 'bo', email: '', color: '#0078d4', active: true }] },
+      resolveCaller: new ResolveCaller({ team: { all: async () => [BO], findById: async (id) => (id === 'm2' ? BO : undefined) } }),
       loadProject: { execute: async () => ({ db: emptyDatabase(), serverTime: '2026-03-02T10:00:00.000Z' }) },
       watchChanges: { execute: (listener) => ({ version: 7, stop: feed.subscribe(listener) }) },
       security: new Security({ ip: { burst: 50, perMinute: 60 }, heavy: { burst: 1, perMinute: 1 }, ban: { violations: 1000, authFailures: 2, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, () => clock),
@@ -280,5 +287,97 @@ describe('the request pipeline', () => {
     controller.abort();
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(feed.listening, 0);
+  });
+});
+
+describe('the request pipeline under pressure', () => {
+  const servers: http.Server[] = [];
+  let clock = 0;
+  let stillSignedIn = true;
+  const feed = new MemoryChangeFeed();
+
+  after(() => {
+    for (const server of servers) server.close();
+  });
+
+  async function serve(options: ConstructorParameters<typeof Security>[0], identify: () => Identity = () => ({ signInEnabled: true, member: null, isAdmin: false, via: 'none', token: null, invalidToken: false })) {
+    const security = new Security(options, () => clock);
+    const handler = requestPipeline({
+      routes: () =>
+        new Router().add('POST', '/auth/login', async (_req, res) => {
+          await new Promise((r) => setTimeout(r, 30)); // a slow password check
+          sendJson(res, 401, { error: 'Incorrect username or password' });
+        }),
+      authenticator: { identify: async () => ({ identity: identify(), sessionToken: 'session' }), stillSignedIn: async () => stillSignedIn },
+      signInEnabled: () => false,
+      resolveCaller: new ResolveCaller({ team: { all: async () => [], findById: async () => undefined } }),
+      loadProject: { execute: async () => ({ db: emptyDatabase(), serverTime: '' }) },
+      watchChanges: { execute: (listener) => ({ version: 1, stop: feed.subscribe(listener) }) },
+      security,
+      trustProxy: 1,
+    });
+    const server = http.createServer(handler);
+    servers.push(server);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    return { base: `http://127.0.0.1:${address.port}`, security };
+  }
+
+  const signedIn = (): Identity => ({ signInEnabled: true, member: BO, isAdmin: false, via: 'session', token: null, invalidToken: false });
+
+  it('never limits the health check, and turns banned clients away everywhere', async () => {
+    const { base } = await serve({ ip: { burst: 1, perMinute: 1 }, ban: { violations: 2, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } });
+    const from = (ip: string) => ({ headers: { 'X-Forwarded-For': ip } });
+    for (let i = 0; i < 5; i++) assert.equal((await fetch(`${base}/api/health`, from('192.0.2.1'))).status, 200);
+    assert.equal((await fetch(`${base}/somewhere`, from('192.0.2.2'))).status, 404);
+    const limited = await fetch(`${base}/somewhere`, from('192.0.2.2'));
+    assert.deepEqual([limited.status, limited.headers.get('retry-after')], [429, '60']);
+    await fetch(`${base}/somewhere`, from('192.0.2.2'));
+    const banned = await fetch(`${base}/index.html`, from('192.0.2.2'));
+    assert.deepEqual([banned.status, await banned.json()], [403, { error: 'Access from your network is temporarily blocked.' }]);
+  });
+
+  it('limits sign-in attempts at any spelling of the path, and caps password checks running at once', async () => {
+    const { base, security } = await serve({ signIn: { burst: 2, perMinute: 1 }, hashConcurrency: 1, ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } });
+    const attempt = (ip: string) => fetch(`${base}/api/AUTH/login`, { method: 'POST', headers: { 'X-Forwarded-For': ip, 'Content-Type': 'application/json' }, body: '{}' });
+    const [first, second] = await Promise.all([attempt('192.0.2.3'), attempt('192.0.2.4')]);
+    const statuses = [first.status, second.status].sort();
+    assert.deepEqual(statuses, [401, 503]);
+    const busy = first.status === 503 ? first : second;
+    assert.equal(busy.headers.get('retry-after'), '2');
+    assert.equal(security.stats.hashing, 0);
+    assert.equal((await attempt('192.0.2.3')).status, 401);
+    const limited = await attempt('192.0.2.3');
+    assert.deepEqual([limited.status, limited.headers.get('retry-after')], [429, '60']);
+  });
+
+  it('caps live connections, frees them when browsers leave, and ends streams when the session does', async () => {
+    const { base, security } = await serve({ streamsPerIp: 1, streamsPerUser: 10, streamsTotal: 10 }, signedIn);
+    const controller = new AbortController();
+    const open = await fetch(`${base}/api/events`, { signal: controller.signal, headers: { 'X-Forwarded-For': '192.0.2.5' } });
+    assert.equal(open.status, 200);
+    assert.equal(security.stats.streamsOpen, 1);
+    const second = await fetch(`${base}/api/events`, { headers: { 'X-Forwarded-For': '192.0.2.5' } });
+    assert.deepEqual([second.status, second.headers.get('retry-after')], [429, '10']);
+    controller.abort();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(security.stats.streamsOpen, 0);
+
+    // Signed out (or timed out): the next message ends the stream instead.
+    const watched = await fetch(`${base}/api/events`, { headers: { 'X-Forwarded-For': '192.0.2.6' } });
+    stillSignedIn = false;
+    feed.emit({ version: 2 });
+    const text = await watched.text();
+    assert.equal(text, 'event: hello\ndata: {"version":1}\n\n');
+    assert.equal(security.stats.streamsOpen, 0);
+    assert.equal(feed.listening, 0);
+    stillSignedIn = true;
+  });
+
+  it('refuses new live connections once the server is full', async () => {
+    const { base } = await serve({ streamsTotal: 0 }, signedIn);
+    const full = await fetch(`${base}/api/events`);
+    assert.deepEqual([full.status, await full.json()], [503, { error: 'Too many live connections. Try again later.' }]);
   });
 });

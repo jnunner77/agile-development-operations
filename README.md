@@ -173,8 +173,8 @@ otherwise passwords travel over the network unencrypted.
 
 ### Collaboration
 - Changes are pushed to every open browser instantly (server-sent events).
-- Pick "who you are" in the top bar; it's recorded in history and comments.
-  There is no authentication — run it on a trusted network or behind your own auth proxy.
+- With sign-in off (the default), pick "who you are" in the top bar; it's recorded in history and
+  comments. Turn sign-in on in Project settings to have everyone sign in with a password.
 
 ## Architecture
 

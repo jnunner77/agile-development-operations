@@ -1,9 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { callerFor } from '#application/caller.ts';
 import type { Caller } from '#application/caller.ts';
 import type { LoadProject } from '#application/project/load-project.ts';
 import type { WatchChanges } from '#application/project/watch-changes.ts';
-import type { TeamDirectory } from '#application/ports.ts';
+import type { ResolveCaller } from '#application/sign-in/resolve-caller.ts';
 import type { Authenticator, RequestIdentity } from '../../sign-in/authenticator.ts';
 import { gate } from '../../sign-in/gate.ts';
 import type { RequestContext } from '../context.ts';
@@ -21,7 +20,7 @@ export interface PipelineOptions {
   readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn'>;
   /** Whether sign-in is on now, for the per-request rate limits. */
   readonly signInEnabled: () => boolean;
-  readonly team: Pick<TeamDirectory, 'all'>;
+  readonly resolveCaller: Pick<ResolveCaller, 'execute'>;
   readonly loadProject: Pick<LoadProject, 'execute'>;
   readonly watchChanges: Pick<WatchChanges, 'execute'>;
   /** Rate limits and abuse protection, or false to turn them off (tests). */
@@ -51,6 +50,18 @@ const EVENTS = /^\/events\/?$/i;
 function header(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name];
   return Array.isArray(value) ? value[0] : value;
+}
+
+/** The path and query of a request target, also when sent in absolute form (`GET http://host/x`). */
+function requestTarget(raw: string | undefined): string {
+  if (!raw) return '/';
+  if (raw.startsWith('/')) return raw;
+  try {
+    const url = new URL(raw);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return raw;
+  }
 }
 
 function refuse(res: ServerResponse, refusal: Refusal): void {
@@ -102,6 +113,8 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
   const client = options.staticDir ? staticFiles(options.staticDir) : undefined;
 
   async function liveUpdates(req: IncomingMessage, res: ServerResponse, state: Known, identity: RequestIdentity): Promise<void> {
+    // A client that left while it was being identified would never send 'close' again.
+    if (req.destroyed || res.destroyed) return;
     let release = () => {};
     if (security) {
       const stream = security.openStream(state.ip, memberOf(state));
@@ -173,20 +186,21 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     if (decision.kind === 'reject') return sendJson(res, decision.status, decision.body);
     // History and comments are attributed to who actually made the change.
     const actingAs = decision.actAs === 'as-sent' ? claimedUser(req) : decision.actAs;
-    state.caller = callerFor({ identity: identity.identity, actingAs, team: await options.team.all(), origin: header(req, 'x-client-id') });
+    state.caller = await options.resolveCaller.execute({ identity: identity.identity, actingAs, origin: header(req, 'x-client-id') });
 
     if (routes.owns(method, path)) {
       req.url = rest;
       if (await routes.handle(req, res)) return;
     }
-    if (method === 'GET' && BOOTSTRAP.test(path)) return sendJson(res, 200, await options.loadProject.execute());
+    // Node leaves the body out of answers to HEAD.
+    if ((method === 'GET' || method === 'HEAD') && BOOTSTRAP.test(path)) return sendJson(res, 200, await options.loadProject.execute());
     if (method === 'GET' && EVENTS.test(path)) return liveUpdates(req, res, state, identity);
     sendJson(res, 404, { error: 'Not found' });
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     setSecurityHeaders(res);
-    const url = req.url ?? '/';
+    const url = requestTarget(req.url);
     const path = url.split('?')[0] || '/';
     const { ip, secure } = clientAddress(req, trust);
     const state: Known = { ip, secure, identity: undefined, caller: undefined };
@@ -205,6 +219,9 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
   return (req, res) => {
     handle(req, res).catch((error: unknown) => {
       if (res.headersSent) {
+        // Too late to answer: log it (unless the client just went away) and cut the connection.
+        const code = error instanceof Error && 'code' in error ? error.code : undefined;
+        if (code !== 'ERR_STREAM_PREMATURE_CLOSE' && code !== 'ECONNRESET') console.error(error);
         res.destroy();
         return;
       }

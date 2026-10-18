@@ -22,7 +22,17 @@ const TYPES: Readonly<Record<string, string>> = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.avif': 'image/avif',
+  '.otf': 'font/otf',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.pdf': 'application/pdf',
 };
+
+// Enough for a built single-page app: GET and HEAD, a weak ETag (If-None-Match) and Last-Modified,
+// no ranges. Anything not in TYPES is sent as application/octet-stream (and nosniff is on).
 
 /** The file a URL path names inside `root`, or null: never outside it, never a dotfile. */
 function fileFor(root: string, urlPath: string): string | null {
