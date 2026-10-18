@@ -56,6 +56,15 @@ describe('client addresses behind proxies', () => {
       assert.throws(() => trustFunction(bad), /TRUST_PROXY/, bad);
     }
   });
+
+  it('uses IPv4 prefixes for mapped IPv4 ranges', () => {
+    const spoofed = { 'x-forwarded-for': '203.0.113.9', 'x-forwarded-proto': 'https' };
+    for (const range of ['::ffff:10.0.0.1/8', '::ffff:127.0.0.1/8']) {
+      assert.deepEqual(clientAddress(request('203.0.113.7', spoofed), trustFunction(range)), { ip: '203.0.113.7', secure: false }, range);
+    }
+    assert.equal(clientAddress(request('10.2.3.4', {}), trustFunction('::ffff:10.0.0.1/8')).ip, '10.2.3.4');
+    assert.throws(() => trustFunction('::ffff:10.0.0.1/33'), /TRUST_PROXY/);
+  });
 });
 
 describe('static files', () => {

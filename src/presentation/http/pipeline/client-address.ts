@@ -72,7 +72,8 @@ function rangeMatcher(entry: string): ((address: string) => boolean) | null {
   const [addr = '', bits, extra] = entry.split('/');
   const base = bytesOf(addr);
   if (!base || extra !== undefined) return null;
-  const v4 = net.isIPv4(addr);
+  const mappedV4 = base.slice(0, 10).every((byte) => byte === 0) && base[10] === 0xff && base[11] === 0xff;
+  const v4 = net.isIPv4(addr) || mappedV4;
   const bitsGiven = bits === undefined ? (v4 ? 32 : 128) : prefixBits(bits, v4);
   if (bitsGiven === null) return null;
   const prefix = bitsGiven + (v4 ? 96 : 0);
