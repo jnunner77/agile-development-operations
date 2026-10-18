@@ -6,10 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 import { LocalEventBus } from '#infrastructure/local-event-bus.ts';
-import { buildDemoDatabase } from '../server/seed.ts';
+import { buildDemoDatabase } from '#infrastructure/json-store/demo-project.ts';
 import { Security } from '../server/security.ts';
-import { SnapshotManager } from '../server/snapshots.ts';
-import { createApp, createAuth } from './compose.ts';
+import { composeApp, createAuth } from './compose.ts';
 
 const env = process.env;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,8 +17,6 @@ const port = Number(env['PORT'] ?? 4000);
 const seed = (env['SEED'] ?? 'demo') === 'demo';
 
 const store = new Store(dataDir, () => (seed ? buildDemoDatabase() : emptyDatabase()));
-const snapshots = new SnapshotManager(store);
-snapshots.startScheduler();
 
 // AUTH_DISABLED=1 forces sign-in off, e.g. to recover if every administrator is locked out.
 const authDisabled = /^(1|true|yes)$/i.test(env['AUTH_DISABLED'] ?? '');
@@ -35,15 +32,16 @@ security.start();
 const events = new LocalEventBus();
 if (/^(1|true|yes)$/i.test(env['EVENT_LOG'] ?? '')) events.subscribe((event) => console.log(JSON.stringify(event)));
 
-const app = createApp({
+const { app, startBackupSchedule } = composeApp({
   store,
-  snapshots,
   auth,
   security,
   events,
   trustProxy: parseTrustProxy(env['TRUST_PROXY']),
   staticDir: path.join(root, 'dist', 'client'),
 });
+
+const stopBackups = startBackupSchedule();
 
 const server = http.createServer(app);
 // Drop clients that send requests too slowly (slowloris) or hold idle connections open.
@@ -61,7 +59,7 @@ server.listen(port, () => {
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     console.log(`${signal} received, shutting down`);
-    snapshots.stopScheduler();
+    stopBackups();
     security.stop();
     server.close(() => process.exit(0));
     server.closeAllConnections();

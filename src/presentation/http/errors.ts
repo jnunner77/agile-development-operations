@@ -173,6 +173,14 @@ export function httpFailure(error: AppError): HttpFailure {
         status: 403,
         message: error.action === 'create' ? 'Only administrators can create tokens for someone else' : "Only administrators can revoke someone else's token",
       };
+    // Snapshots and backups
+    case 'SNAPSHOT_NOT_FOUND':
+      return { status: 404, message: 'Snapshot not found' };
+    case 'MANUAL_SNAPSHOT_LIMIT':
+      return { status: 400, message: `There are already ${error.max} snapshots taken by hand. An administrator can delete old ones to make room.` };
+    case 'INVALID_BACKUP':
+      return { status: 400, message: error.reason };
+
     // GitHub integration
     case 'REPOSITORY_INVALID':
       return { status: 400, message: `Repositories must look like owner/name ("${error.value}" doesn't)` };

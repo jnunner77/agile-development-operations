@@ -16,20 +16,15 @@ export interface Database {
   recycleBin: RecycledItem[];
 }
 
-export type SnapshotKind = 'manual' | 'auto' | 'pre-restore' | 'pre-import' | 'pre-reset';
+export { MAX_MANUAL_SNAPSHOTS } from '#domain/snapshots/snapshot.ts';
+export type { SnapshotKind, SnapshotMeta } from '#domain/snapshots/snapshot.ts';
 
-/** Snapshots people take themselves (not automatic or safety ones) are capped at this many. */
-export const MAX_MANUAL_SNAPSHOTS = 50;
-
-export interface SnapshotMeta {
-  id: string;
-  name: string;
-  description: string;
-  kind: SnapshotKind;
-  createdAt: Timestamp;
-  createdBy: string;
-  sizeBytes: number;
-  stats: { workItems: number; sprints: number; members: number };
+/** A full export, as downloaded from Backups. Imports also accept a snapshot file or a bare database. */
+export interface BackupFile {
+  format: 'ado-clone-backup';
+  exportedAt: Timestamp;
+  exportedBy: string;
+  data: Database;
 }
 
 /** Incremental change set broadcast after every mutation. */

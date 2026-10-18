@@ -6,7 +6,6 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, createAuth } from '../../src/compose.ts';
 import { emptyDatabase } from '#infrastructure/json-store/schema.ts';
-import { SnapshotManager } from '../../server/snapshots.ts';
 import { Store } from '#infrastructure/json-store/store.ts';
 import { branchIds, branchNameFor, mentionedIds } from '#domain/dev-links/references.ts';
 import type { WorkItem } from '#domain/types.ts';
@@ -22,7 +21,7 @@ const SENDER = { login: 'octocat' };
 beforeEach(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-github-'));
   store = new Store(dir, () => emptyDatabase());
-  app = createApp({ store, snapshots: new SnapshotManager(store), security: false });
+  app = createApp({ store, security: false });
   secret = (await request(app).post('/api/integrations/github/secret')).body.secret;
 });
 
@@ -110,7 +109,7 @@ describe('webhook security', () => {
 
     const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-github-'));
     const s2 = new Store(fresh, () => emptyDatabase());
-    const noSecret = createApp({ store: s2, snapshots: new SnapshotManager(s2), security: false });
+    const noSecret = createApp({ store: s2, security: false });
     expect((await post(noSecret, signed)).status).toBe(404);
     fs.rmSync(fresh, { recursive: true, force: true });
   });
@@ -118,7 +117,7 @@ describe('webhook security', () => {
   it('is disabled until a secret is created', async () => {
     const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'boards-github-'));
     const s2 = new Store(fresh, () => emptyDatabase());
-    const app2 = createApp({ store: s2, snapshots: new SnapshotManager(s2), security: false });
+    const app2 = createApp({ store: s2, security: false });
     expect((await deliver('ping', { repository: REPO }, { target: app2 })).status).toBe(404);
     fs.rmSync(fresh, { recursive: true, force: true });
   });
@@ -152,7 +151,7 @@ describe('webhook security', () => {
 
   it('accepts trailing-slash webhook requests without a session when sign-in is on', async () => {
     const auth = createAuth(store);
-    const signedIn = createApp({ store, snapshots: new SnapshotManager(store), auth, security: false });
+    const signedIn = createApp({ store, auth, security: false });
     const member = (await request(signedIn).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result;
     await request(signedIn).patch(`/api/auth/accounts/${member.id}`).send({ isAdmin: true });
     await request(signedIn).post(`/api/auth/accounts/${member.id}/password`).send({ password: 'correct horse', mustChange: false });

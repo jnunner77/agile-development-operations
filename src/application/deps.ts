@@ -8,6 +8,7 @@ import type { ApiTokenRepository } from '#domain/api-tokens/repository.ts';
 import type { GitHubIntegrationRepository } from '#domain/integrations/repository.ts';
 import type { AccountRepository, FailedAttemptsRepository, SessionRepository, SignInSettingsRepository } from '#domain/sign-in/repository.ts';
 import type { DeliveryLog, GitHubPayloads, WebhookSignatures } from './integrations/ports.ts';
+import type { ProjectStore, SnapshotRepository } from './backups/ports.ts';
 import type { Clock, EventPublisher, IdGenerator, PasswordHasher, SerialWrites, Secrets, TeamDirectory, UnitOfWork } from './ports.ts';
 
 /** Everything the use cases can depend on. Each module takes the part it needs. */
@@ -31,6 +32,9 @@ export interface AppDeps {
   readonly signInWrites: SerialWrites;
   /** Sign-in is forced off (AUTH_DISABLED), whatever its settings say: recovery if every admin is locked out. */
   readonly signInForcedOff: boolean;
+  readonly snapshots: SnapshotRepository;
+  /** The whole project, for snapshots, backups and resets. */
+  readonly project: ProjectStore;
   readonly github: GitHubIntegrationRepository;
   readonly deliveries: DeliveryLog;
   readonly webhookSignatures: WebhookSignatures;
