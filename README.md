@@ -85,7 +85,9 @@ docker compose up -d --build
 - Create, edit (dates & sprint goal) and delete sprints; next sprint dates are suggested.
 - **Taskboard**: rows per backlog item (or per person), To Do / In Progress / Done columns, drag tasks
   across columns and rows, inline remaining-hours editing, person filter.
-- **Sprint backlog**: ordered list of the sprint's items and their tasks.
+- **Sprint backlog**: ordered list of the sprint's items and their tasks. **Column options** picks
+  which columns it shows (ID, type, priority, business value, estimates, completed work, dates,
+  parent, area path and more); each browser remembers its choice, and **Reset to defaults** undoes it.
 - **Move work out of a sprint**: any item's menu (right-click or `…`) on the taskboard or sprint
   backlog has **Move to next sprint** and **Move to backlog**; the sprint's `…` menu moves *all*
   unfinished work at once. Open tasks travel with their backlog item; finished work stays put.

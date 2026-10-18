@@ -2,14 +2,15 @@ import { useMemo, useState } from 'react';
 import type { WorkItemType } from '#domain/process.ts';
 import type { Sprint, WorkItem } from '#domain/types.ts';
 import { api } from '../../api';
-import { EmptyState, Person, StateBadge, Tags, useMenu } from '../../components/common';
+import { ColumnPicker, useColumnChoice } from '../../components/ColumnPicker';
+import { EmptyState, useMenu } from '../../components/common';
 import { Icon, TypeIcon } from '../../components/Icon';
 import { useWorkItemDialog } from '../../components/WorkItemForm';
 import { useItemMenu } from '../../lib/actions';
 import { draggedIds, dropPosition, endDrag, startDrag } from '../../lib/dnd';
-import { formatHours, formatNumber } from '../../lib/format';
 import { rollup, useChildrenMap, useItemsById } from '../../lib/hooks';
 import { useStore } from '../../store';
+import { SPRINT_BACKLOG_COLUMNS, SPRINT_BACKLOG_DEFAULTS } from './backlogColumns';
 
 const REQ_TYPES: WorkItemType[] = ['Product Backlog Item', 'Bug'];
 
@@ -27,6 +28,10 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
   const [taskFor, setTaskFor] = useState<number | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [drop, setDrop] = useState<{ id: number; pos: 'before' | 'after' | 'into' } | null>(null);
+  const columns = useColumnChoice('sprintBacklog', SPRINT_BACKLOG_COLUMNS, SPRINT_BACKLOG_DEFAULTS);
+  const shown = columns.shown;
+  // Cells before the Title column, counting the drag handle; the inline "add task" row lines up after them.
+  const beforeTitle = 1 + shown.findIndex((c) => c.key === 'title');
 
   const reqs = useMemo(
     () => items.filter((w) => w.iterationId === sprint.id && REQ_TYPES.includes(w.type) && w.state !== 'Removed').sort((a, b) => a.stackRank - b.stackRank),
@@ -105,58 +110,53 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
         <td className="col-drag">
           <Icon name="drag" size={12} />
         </td>
-        <td className="col-order muted">{depth ? '' : reqs.indexOf(w) + 1}</td>
-        <td className="col-title">
-          <div className="title-cell" style={{ paddingLeft: depth * 20 }}>
-            {hasKids ? (
-              <button
-                className="expander"
-                onClick={() => {
-                  const next = new Set(collapsed);
-                  if (next.has(w.id)) next.delete(w.id);
-                  else next.add(w.id);
-                  setCollapsed(next);
-                }}
-              >
-                <Icon name={collapsed.has(w.id) ? 'chevronRight' : 'chevronDown'} size={12} />
-              </button>
-            ) : (
-              <span className="expander-spacer" />
-            )}
-            <TypeIcon type={w.type} />
-            <button className="title-link" title={w.title} onClick={() => open(w.id)}>
-              {w.title}
-            </button>
-            {w.blocked && <span className="badge badge-danger">Blocked</span>}
-            {!depth && (
-              <button
-                className="icon-btn row-add"
-                title="Add task"
-                onClick={() => {
-                  setTaskFor(w.id);
-                  setTaskTitle('');
-                  const next = new Set(collapsed);
-                  next.delete(w.id);
-                  setCollapsed(next);
-                }}
-              >
-                <Icon name="add" size={12} />
-              </button>
-            )}
-          </div>
-        </td>
-        <td>
-          <StateBadge type={w.type} state={w.state} />
-        </td>
-        <td>
-          <Person id={w.assignedTo} />
-        </td>
-        <td className="num">{formatNumber(w.effort)}</td>
-        <td className="num">{r.hasChildren ? formatHours(r.remaining) : formatHours(w.remainingWork)}</td>
-        <td>{w.activity ?? ''}</td>
-        <td>
-          <Tags tags={w.tags} max={2} />
-        </td>
+        {shown.map((c) =>
+          c.key === 'title' ? (
+            <td key={c.key} className="col-title">
+              <div className="title-cell" style={{ paddingLeft: depth * 20 }}>
+                {hasKids ? (
+                  <button
+                    className="expander"
+                    onClick={() => {
+                      const next = new Set(collapsed);
+                      if (next.has(w.id)) next.delete(w.id);
+                      else next.add(w.id);
+                      setCollapsed(next);
+                    }}
+                  >
+                    <Icon name={collapsed.has(w.id) ? 'chevronRight' : 'chevronDown'} size={12} />
+                  </button>
+                ) : (
+                  <span className="expander-spacer" />
+                )}
+                <TypeIcon type={w.type} />
+                <button className="title-link" title={w.title} onClick={() => open(w.id)}>
+                  {w.title}
+                </button>
+                {w.blocked && <span className="badge badge-danger">Blocked</span>}
+                {!depth && (
+                  <button
+                    className="icon-btn row-add"
+                    title="Add task"
+                    onClick={() => {
+                      setTaskFor(w.id);
+                      setTaskTitle('');
+                      const next = new Set(collapsed);
+                      next.delete(w.id);
+                      setCollapsed(next);
+                    }}
+                  >
+                    <Icon name="add" size={12} />
+                  </button>
+                )}
+              </div>
+            </td>
+          ) : (
+            <td key={c.key} className={[c.className, c.cellClass].filter(Boolean).join(' ') || undefined}>
+              {c.cell(w, { order: depth ? null : reqs.indexOf(w) + 1, rolled: r, itemsById })}
+            </td>
+          ),
+        )}
         <td className="col-actions">
           <button className="icon-btn row-more" aria-label="Actions" onClick={(e) => menu.openAt(e, itemMenu.build([w], { sprint, reorderWithin: depth ? undefined : reqs, onAddChild: (p) => setTaskFor(p.id) }))}>
             <Icon name="more" size={14} />
@@ -179,6 +179,7 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
         <button className="icon-btn" title="Collapse all" onClick={() => setCollapsed(new Set(reqs.map((r) => r.id)))}>
           <Icon name="collapseAll" />
         </button>
+        <ColumnPicker columns={SPRINT_BACKLOG_COLUMNS} choice={columns} />
       </div>
       {adding && (
         <div className="add-panel">
@@ -213,14 +214,11 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
             <thead>
               <tr>
                 <th className="col-drag" />
-                <th className="col-order">Order</th>
-                <th className="col-title">Title</th>
-                <th>State</th>
-                <th>Assigned To</th>
-                <th>Effort</th>
-                <th>Remaining Work</th>
-                <th>Activity</th>
-                <th>Tags</th>
+                {shown.map((c) => (
+                  <th key={c.key} className={c.className}>
+                    {c.label}
+                  </th>
+                ))}
                 <th className="col-actions" />
               </tr>
             </thead>
@@ -232,9 +230,8 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
                   ...(collapsed.has(req.id) ? [] : tasks.map((t) => row(t, 1, false))),
                   taskFor === req.id && (
                     <tr key={`add-${req.id}`} className="row-add-child">
-                      <td />
-                      <td />
-                      <td colSpan={8}>
+                      <td colSpan={beforeTitle} />
+                      <td colSpan={shown.length - beforeTitle + 2}>
                         <div className="inline-add" style={{ paddingLeft: 44 }}>
                           <TypeIcon type="Task" />
                           <input
@@ -257,7 +254,7 @@ export function SprintBacklog({ sprint }: { sprint: Sprint }) {
               {unparentedTasks.length > 0 && (
                 <tr className="row-header">
                   <td />
-                  <td colSpan={9}>Unparented tasks</td>
+                  <td colSpan={shown.length + 1}>Unparented tasks</td>
                 </tr>
               )}
               {unparentedTasks.map((t) => row(t, 1, false))}

@@ -133,13 +133,24 @@ export function isNarrowScreen() {
 
 /** Re-renders when the screen crosses the narrow breakpoint (e.g. rotating a phone). */
 export function useIsNarrow() {
-  const [narrow, setNarrow] = useState(isNarrowScreen);
+  return useMediaQuery(NARROW_QUERY);
+}
+
+/** True on phone-sized screens (the breakpoint where grids drop columns); follows rotation. */
+export function useIsPhone() {
+  return useMediaQuery('(max-width: 640px)');
+}
+
+function useMediaQuery(query: string) {
+  const matches = () => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches;
+  const [match, setMatch] = useState(matches);
   useEffect(() => {
-    const mq = window.matchMedia?.(NARROW_QUERY);
+    const mq = window.matchMedia?.(query);
     if (!mq) return;
-    const onChange = () => setNarrow(mq.matches);
+    const onChange = () => setMatch(mq.matches);
+    onChange();
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return narrow;
+  }, [query]);
+  return match;
 }

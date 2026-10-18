@@ -716,6 +716,52 @@ textarea {
 .toolbar .check-row {
   padding: 0 8px;
 }
+.column-picker {
+  position: relative;
+}
+.column-picker-popup {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 50;
+  min-width: 210px;
+  max-height: 440px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px 0;
+}
+.column-picker-head {
+  padding: 6px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.column-picker-popup .check-row:hover {
+  background: var(--hover);
+}
+.column-picker-popup .check-row:has(input:disabled) {
+  cursor: default;
+  color: var(--text-2);
+}
+.column-picker-popup .link-btn {
+  padding: 6px 12px;
+}
+.column-picker-popup .link-btn:disabled {
+  color: var(--text-3);
+  cursor: default;
+  text-decoration: none;
+}
+/* A long value in a grid cell, cut short with an ellipsis. */
+.cell-clip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
 
 /* ---------- Grids --------------------------------------------------------- */
 .grid-wrap {
@@ -2694,6 +2740,10 @@ tr.selected .row-more {
   .menu-item {
     padding: 11px 14px 11px 10px;
   }
+  .column-picker-popup .check-row,
+  .column-picker-popup .link-btn {
+    padding: 10px 14px;
+  }
   .person-btn {
     min-height: 32px;
     padding: 0 4px 0 0;
@@ -2900,6 +2950,13 @@ tr.selected .row-more {
   .col-title > .title-link {
     display: block;
     max-width: 100%;
+  }
+  /* The sprint backlog can show any columns: keep room for titles and scroll sideways instead. */
+  .sprint-view .backlog-grid .col-title {
+    min-width: 150px;
+  }
+  .sprint-view .backlog-grid th {
+    white-space: normal;
   }
   .grid td,
   .grid th {

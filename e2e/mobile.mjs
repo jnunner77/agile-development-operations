@@ -60,7 +60,26 @@ await lanePbi.locator('.person-btn').tap();
 await page.locator('.menu .menu-item', { hasText: someone.name }).tap();
 await page.waitForTimeout(400);
 assert.equal((await db()).workItems.find((w) => w.title === lanePbiTitle).assignedTo, someone.id, 'reassigned from the card');
-// 7. Bottom navigation
+// 7. Sprint backlog: phones start with a short set of columns that leaves room for titles,
+// and the column picker works by touch
+await page.goto(`${base}/sprints/${sid}/backlog`);
+const headers = () => page.locator('.backlog-grid thead th').allTextContents().then((t) => t.map((s) => s.trim()).filter(Boolean));
+const phoneHeaders = ['Title', 'State', 'Assigned To'];
+assert.deepEqual(await headers(), phoneHeaders, 'phone default columns');
+assert.ok((await page.locator('.backlog-grid tbody .title-link').first().boundingBox()).width > 80, 'titles have room');
+assert.ok(await page.locator('.backlog-grid tbody .row-more').first().isVisible(), 'row menu on screen');
+await page.getByRole('button', { name: 'Column options' }).tap();
+const picker = page.getByRole('group', { name: 'Columns' });
+await picker.getByLabel('Remaining Work').tap();
+assert.deepEqual(await headers(), [...phoneHeaders, 'Remaining Work'], 'added Remaining Work');
+const pickerBox = await picker.boundingBox();
+const navBox = await page.locator('.bottomnav').boundingBox();
+assert.ok(pickerBox.y + pickerBox.height <= navBox.y, 'picker ends above the bottom navigation');
+await page.getByRole('button', { name: 'Reset to defaults' }).tap();
+assert.deepEqual(await headers(), phoneHeaders, 'reset');
+const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+assert.ok(overflow <= 0, 'no sideways page scroll');
+// 8. Bottom navigation
 await page.locator('.bottomnav-link', { hasText: 'Boards' }).tap();
 await page.waitForURL(/\/boards\//);
 assert.deepEqual(errors, []);
