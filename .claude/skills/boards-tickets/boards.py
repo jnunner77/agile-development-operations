@@ -34,6 +34,8 @@ def call(method, path, body=None):
             return json.loads(r.read() or b"null")
     except urllib.error.HTTPError as e:
         sys.exit(f"{method} {path}: HTTP {e.code} {e.read().decode(errors='replace')[:300]}")
+    except urllib.error.URLError as e:
+        sys.exit(f"cannot reach {url}: {e.reason}")
 
 
 def context():
