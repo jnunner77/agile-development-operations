@@ -16,7 +16,7 @@ through the Boards API (`BOARDS_URL`, `BOARDS_TOKEN`), and tell the user the AB#
 writing code. If the API isn't reachable, stop and ask; don't start without a ticket.
 
 Link the work to it as below; task states kept current (In Progress when started, Done when
-merged), and a ticket with a "Validate on the live Boards server" task stays open until the change
+merged), except a "Validate on the live Boards server" task, which stays open until the change
 is confirmed on the live server.
 
 ## Who does what
@@ -79,8 +79,8 @@ Every change is for a work item (see Tickets first), e.g. #123, "Offline indicat
 When the session has `BOARDS_URL` and `BOARDS_TOKEN` environment variables, you can read and
 change the team's work items directly (create PBIs, tasks and bugs, move them between
 sprints, update state, comment). `.claude/skills/boards-tickets/boards.py` wraps the calls this
-workflow needs (whoami, create, state, link, comment, show, brief); `docs/api.md` lists every
-endpoint with `curl` examples.
+workflow needs (whoami, create, state, link, comment, show, brief); `docs/api.md` lists the
+endpoints a token can use, with `curl` examples.
 
 - Send the token as `Authorization: Bearer $BOARDS_TOKEN`. Never print it, log it, commit it
   or put it in a URL.
@@ -88,7 +88,8 @@ endpoint with `curl` examples.
 - Link code to the items you work on as described above, so pull requests move them along.
 - Assign every Task to Claude (the member the token acts as, `GET /api/auth/status`) and every
   PBI, Bug, Feature and Epic to Justin Nunner (`jnunner77`). Close your tasks (Done) once their
-  work is merged; a merge doesn't do it for pull requests in other repositories.
+  work is merged, except a "Validate on the live Boards server" task, which waits for the user's
+  confirmation; a merge doesn't do it for pull requests in other repositories.
 
 ## Code conventions
 

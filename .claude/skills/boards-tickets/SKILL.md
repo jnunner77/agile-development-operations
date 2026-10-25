@@ -95,5 +95,6 @@ moves them to Done. Only linked items move, so the "Validate on the live Boards 
   didn't move to `Done` (the webhook may be off or have missed it).
 - A ticket with a "Validate on the live Boards server" task: leave that task open until the user
   confirms the change works on the live Boards server (after it's redeployed,
-  [`deploy/README.md`](../../../deploy/README.md)). Then set it `Done` (and the PBI/Bug, if it
-  isn't already), and comment who confirmed it. A ticket without one is finished at the merge.
+  [`deploy/README.md`](../../../deploy/README.md)). Then set it `Done` and comment who confirmed
+  it. The PBI/Bug and the Development tasks are already `Done` from the merge. A ticket without
+  such a task is finished at the merge.
