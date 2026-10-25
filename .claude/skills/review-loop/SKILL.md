@@ -23,7 +23,11 @@ push ─▶ review ─▶ PASS ─────────────▶ open t
 
 Work as `CLAUDE.md` and the `boards-tickets` skill say: ticket first, branch `wi/<id>-<short-title>`,
 `npm run typecheck`, `npm test` and `npm run build` passing (and for UI changes the e2e smoke and
-mobile tests against a fresh demo database), commit subjects ending `(AB#<pbi> AB#<task> …)`. Push.
+mobile tests against a fresh demo database), commit subjects ending `(AB#<pbi> AB#<task> …)`.
+
+Push, unless the branch already has an open pull request: a push would update it before any
+review. Then review the local commits first (the reviewer's `git diff origin/main...HEAD` reads the
+local `HEAD`) and push only after a pass.
 
 ## 2. Spawn the reviewer
 
@@ -87,8 +91,9 @@ findings itself.
   - Needs a design decision, or disputed: the planner decides (`model-roles` step 3).
 
   The implementer runs `npm run typecheck`, `npm test` and `npm run build` again and commits
-  (subject still ends with the AB# ids); the session pushes and goes back to step 2 with the round
-  number increased and the list of previous findings.
+  (subject still ends with the AB# ids); the session goes back to step 2 with the round number
+  increased and the list of previous findings, pushing the fix first only while the branch has no
+  open pull request.
 
 Repeat until the review passes with no findings, or until round 8 fails (below). Use a fresh
 reviewer each round (a new Agent call, not a continued one), so every round reads the branch as it
@@ -128,6 +133,7 @@ and name the AB# on the thread. Don't request a Copilot review.
 ## Later pushes
 
 Every later push to the branch (review comments, CI fixes, a merge of `main`) goes through steps 2–3
-again, counting its own rounds from 1: review it before or right after pushing, and fix and re-
-review until it passes before you report the pull request ready or ask for its review. Note the new
-round in the pull request's **Code review** section.
+again, counting its own rounds from 1: with an open pull request, review the local commits before
+pushing and push only after a pass, so the pull request is never updated with unreviewed code. Fix
+and re-review until it passes before you report the pull request ready or ask for its review. Note
+the new round in the pull request's **Code review** section.

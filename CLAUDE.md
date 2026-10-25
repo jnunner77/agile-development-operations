@@ -53,9 +53,10 @@ every Agent call; it doesn't plan or write the change itself.
   skill (`.claude/skills/review-loop/`). It spawns the `code-reviewer` agent
   (`.claude/agents/code-reviewer.md`, on the cheapest model, Haiku) with the diff and the ticket's
   description, acceptance criteria and tasks; the implementer fixes its findings, and the branch is
-  pushed and reviewed again until it passes with no findings (or the eighth fails, as above), and
-  only then is the pull request opened. Don't ask GitHub Copilot to review pull requests: the
-  owner turned that off.
+  reviewed again until it passes with no findings (or the eighth fails, as above), and only then is
+  the pull request opened. Before a pull request exists, push and then review; once one is open,
+  review the local commits first and push only after a pass. Don't ask GitHub Copilot to review
+  pull requests: the owner turned that off.
 - Update `README.md` when a feature changes what people see, and `docs/api.md` when the API
   changes.
 
@@ -69,9 +70,9 @@ Every change is for a work item (see Tickets first), e.g. #123, "Offline indicat
 - Mention `AB#<id>` in the pull request title or description (e.g. "Closes AB#123"), and in
   commit messages on branches not named after the item. Several items: `AB#12 AB#34`.
 - Opening a non-draft pull request moves linked backlog items to Committed and tasks to In
-  Progress; merging into `main` moves them to Done. Use a draft pull request if the work
-  isn't ready to move yet. Open pull requests only once the review loop passes; they're never
-  drafts then.
+  Progress; merging into `main` moves them to Done. Open the pull request only after the review
+  loop passes (or the eighth review has failed and its findings have a ticket), ready for review,
+  never as a draft to get ahead of the review.
 
 ## Managing work items through the API
 
