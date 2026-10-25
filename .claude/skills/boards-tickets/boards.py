@@ -74,14 +74,22 @@ def create(spec_path):
         sys.exit('type must be "Product Backlog Item" or "Bug"')
     if not spec.get("tasks"):
         sys.exit("Add the tasks: every PBI or Bug needs at least one task before work starts.")
+    tasks = [{"title": t} if isinstance(t, str) else t for t in spec["tasks"]] if isinstance(spec["tasks"], list) else None
+    if not tasks or not all(isinstance(t, dict) and t.get("title") for t in tasks):
+        sys.exit('tasks must be a list of titles or {"title": ...} objects (see SKILL.md)')
     it = sprint["id"] if sprint else None
     fields = {k: v for k, v in spec.items() if k not in ("tasks", "type")}
     item = call("POST", "/api/workitems", {"type": kind, "assignedTo": po, "iterationId": it, "priority": 2, "position": "bottom", **fields})["result"]
     print(f"{kind} {item['id']}: {item['title']}  ({sprint['name'] if sprint else 'backlog'})")
-    for t in spec["tasks"]:
-        t = {"title": t} if isinstance(t, str) else t
-        task = call("POST", "/api/workitems", {"type": "Task", "parentId": item["id"], "assignedTo": me, "iterationId": it,
-                                               "priority": fields.get("priority", 2), "activity": "Development", **t})["result"]
+    for n, t in enumerate(tasks):
+        try:
+            task = call("POST", "/api/workitems", {"type": "Task", "parentId": item["id"], "assignedTo": me, "iterationId": it,
+                                                   "priority": fields.get("priority", 2), "activity": "Development", **t})["result"]
+        except SystemExit as e:  # call() stops at the first failed request: say what the backlog now holds
+            left = ", ".join(repr(x["title"]) for x in tasks[n:])
+            sys.exit(f"{e.code} -- {kind} AB#{item['id']} was created, but these tasks may not have been: {left}. "
+                     f"Check with `boards.py show {item['id']}` and add the missing ones in Boards by hand "
+                     f"(or delete AB#{item['id']}) before running create again.")
         print(f"  Task {task['id']}: {task['title']}  [{task.get('activity')}]")
 
 

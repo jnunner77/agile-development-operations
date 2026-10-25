@@ -35,6 +35,11 @@ ticket is created from it before the implementer starts or any file is edited.
 - The spec comes from the planner's plan (`model-roles` skill). Write it in the scratchpad, not
   the repo. `boards.py create` assigns the PBI/Bug to Justin Nunner and the tasks to Claude, puts
   all of them in the current sprint, priority 2.
+- `create` makes the PBI/Bug first, then each task. If a task fails, it says which item was
+  created and which tasks may be missing: check with `boards.py show <id>`, then add those tasks
+  in Boards by hand (or delete the item) instead of running `create` again, which would make a
+  second PBI/Bug. After a timeout on the first request, check the backlog the same way: the
+  server may have made the item anyway.
 - whoami and create need the server to say who the token acts as, which Boards does only with
   sign-in on (as on the team's live server). Against a server with sign-in off (a local or demo
   one) they stop and say so: file tickets on the live server.
