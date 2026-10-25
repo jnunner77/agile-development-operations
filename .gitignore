@@ -6,3 +6,4 @@ data/
 .env
 test-results/
 .tsbuild/
+__pycache__/

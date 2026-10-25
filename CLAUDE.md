@@ -7,20 +7,62 @@ no runtime dependencies, and the request pipeline (rate limits, live updates, st
 `src/presentation/http/pipeline/`.
 See `README.md` for features and the architecture, and `deploy/README.md` for hosting.
 
+## Tickets first
+
+Before starting any work (a feature, a fix, docs, config, even a one-line change), create its
+ticket in Boards: a **PBI** for new or changed behaviour, or a **Bug** for something broken, with its
+**tasks**. Follow the `boards-tickets` skill (`.claude/skills/boards-tickets/`), which creates them
+through the Boards API (`BOARDS_URL`, `BOARDS_TOKEN`), and tell the user the AB# numbers before
+writing code. If the API isn't reachable, stop and ask; don't start without a ticket.
+
+Link the work to it as below; task states kept current (In Progress when started, Done when
+merged), and a ticket with a "Validate on the live Boards server" task stays open until the change
+is confirmed on the live server.
+
+## Who does what
+
+Every change is split across models the same way, whatever model the session runs on: follow the
+`model-roles` skill (`.claude/skills/model-roles/`). The session coordinates and passes `model` on
+every Agent call; it doesn't plan or write the change itself.
+
+- **Opus plans**: the `planner` agent (`.claude/agents/planner.md`) writes the plan and the ticket's
+  spec, and answers every architecture and implementation question. Only what needs the user's own
+  decision goes to the user.
+- **Sonnet implements**: the `implementer` agent (`.claude/agents/implementer.md`) writes the code,
+  runs the checks, commits, and fixes review findings. It sends questions to the planner, not the
+  user.
+- **Haiku reviews**: the `code-reviewer` agent, through the `review-loop` skill.
+- If the fifth review still doesn't pass, Opus takes over the fixes for three more rounds (it fixes
+  the findings of reviews 5-7). If the eighth review doesn't pass, its findings get their own
+  ticket and the pull request is opened anyway.
+- When the session was started in another repository's checkout, agents and skills with these
+  names may be that repository's: use this repository's files under `.claude/` (the skills say
+  how).
+
 ## Workflow
 
 - Never commit or push directly to `main`. Every change goes on its own branch cut from the
-  latest `main`, and is merged back through a pull request.
+  latest `main`, and is merged back through a pull request. The branch is `wi/<id>-<short-title>`
+  after its ticket, even when the session suggests another name.
 - Before pushing, run and pass: `npm run typecheck`, `npm test`, and `npm run build`. For UI
   changes, also run the browser smoke test (`npm run build && npm start`, then
   `BASE_URL=http://localhost:4000 npm run test:e2e` and `npm run test:e2e:mobile` against a
   fresh demo database). UI must keep working on phones: check small screens (≤ 640px) and
   give every drag-and-drop action a menu alternative for touch screens.
+- Every push is reviewed before it becomes (or updates) a pull request: follow the `review-loop`
+  skill (`.claude/skills/review-loop/`). It spawns the `code-reviewer` agent
+  (`.claude/agents/code-reviewer.md`, on the cheapest model, Haiku) with the diff and the ticket's
+  description, acceptance criteria and tasks; the implementer fixes its findings, and the branch is
+  pushed and reviewed again until it passes with no findings (or the eighth fails, as above), and
+  only then is the pull request opened. Don't ask GitHub Copilot to review pull requests: the
+  owner turned that off.
+- Update `README.md` when a feature changes what people see, and `docs/api.md` when the API
+  changes.
 
 ## Link your work to work items
 
 The app links branches, commits and pull requests to work items from GitHub webhooks.
-When a change is for a work item (e.g. #123, "Offline indicator banner"):
+Every change is for a work item (see Tickets first), e.g. #123, "Offline indicator banner":
 
 - Name the branch `wi/<id>-<short-title>`, e.g. `wi/123-offline-indicator-banner`.
   Every commit pushed to that branch is linked to the item.
@@ -28,13 +70,16 @@ When a change is for a work item (e.g. #123, "Offline indicator banner"):
   commit messages on branches not named after the item. Several items: `AB#12 AB#34`.
 - Opening a non-draft pull request moves linked backlog items to Committed and tasks to In
   Progress; merging into `main` moves them to Done. Use a draft pull request if the work
-  isn't ready to move yet.
+  isn't ready to move yet. Open pull requests only once the review loop passes; they're never
+  drafts then.
 
 ## Managing work items through the API
 
 When the session has `BOARDS_URL` and `BOARDS_TOKEN` environment variables, you can read and
 change the team's work items directly (create PBIs, tasks and bugs, move them between
-sprints, update state, comment). `docs/api.md` lists the endpoints with `curl` examples.
+sprints, update state, comment). `.claude/skills/boards-tickets/boards.py` wraps the calls this
+workflow needs (whoami, create, state, link, comment, show, brief); `docs/api.md` lists every
+endpoint with `curl` examples.
 
 - Send the token as `Authorization: Bearer $BOARDS_TOKEN`. Never print it, log it, commit it
   or put it in a URL.
