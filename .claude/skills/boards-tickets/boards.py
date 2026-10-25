@@ -48,7 +48,8 @@ def context():
     db = call("GET", "/api/bootstrap")["db"]
     po = next((m["id"] for m in db["members"] if m.get("username") == PO_USERNAME), None)
     today = date.today().isoformat()
-    sprint = next((s for s in db["sprints"] if s["startDate"] <= today <= s["finishDate"]), None)
+    sprint = next((s for s in db["sprints"]  # undated sprints (both dates null) are never current
+                   if s.get("startDate") and s.get("finishDate") and s["startDate"] <= today <= s["finishDate"]), None)
     return db, me, po, sprint
 
 
