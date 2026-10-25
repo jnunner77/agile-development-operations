@@ -32,13 +32,17 @@ def call(method, path, body=None):
                                  headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return json.loads(r.read() or b"null")
+            raw = r.read()
     except urllib.error.HTTPError as e:
         sys.exit(f"{method} {path}: HTTP {e.code} {e.read().decode(errors='replace')[:300]}")
     except urllib.error.URLError as e:  # includes a connection that times out
         sys.exit(f"cannot reach {url}: {e.reason}")
     except TimeoutError:  # connected, but no answer in time
         sys.exit(f"{method} {path}: no answer from {url} in {TIMEOUT}s")
+    try:
+        return json.loads(raw or b"null")
+    except ValueError:
+        sys.exit(f"{method} {path}: {url} didn't answer with JSON; is BOARDS_URL the Boards server?")
 
 
 def context():
@@ -57,7 +61,13 @@ def context():
 
 
 def create(spec_path):
-    spec = json.load(open(spec_path))
+    try:
+        with open(spec_path) as f:
+            spec = json.load(f)
+    except (OSError, ValueError) as e:  # missing file, or not JSON
+        sys.exit(f"cannot read {spec_path}: {e}")
+    if not isinstance(spec, dict):
+        sys.exit(f"{spec_path} must hold a JSON object (see SKILL.md)")
     _, me, po, sprint = context()
     kind = spec.get("type", "Product Backlog Item")
     if kind not in ("Product Backlog Item", "Bug"):
@@ -77,6 +87,8 @@ def create(spec_path):
 
 def show(i):
     db = call("GET", "/api/bootstrap")["db"]
+    if not any(w["id"] == i for w in db["workItems"]):
+        sys.exit(f"no work item {i}")
     for w in db["workItems"]:
         if w["id"] == i or w.get("parentId") == i:
             print(f"{'  ' if w['id'] != i else ''}{w['type']} {w['id']} [{w['state']}] {w['title']}")
