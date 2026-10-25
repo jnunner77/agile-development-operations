@@ -39,8 +39,13 @@ def call(method, path, body=None):
 
 
 def context():
+    user = call("GET", "/api/auth/status").get("user")
+    if not user:
+        sys.exit(f"{os.environ['BOARDS_URL']} has sign-in off, so it doesn't report who the token acts as "
+                 "and tasks can't be assigned to Claude. Point BOARDS_URL at the team's live Boards server "
+                 "(sign-in on), or ask a person to turn sign-in on.")
+    me = user["memberId"]
     db = call("GET", "/api/bootstrap")["db"]
-    me = call("GET", "/api/auth/status")["user"]["memberId"]
     po = next((m["id"] for m in db["members"] if m.get("username") == PO_USERNAME), None)
     today = date.today().isoformat()
     sprint = next((s for s in db["sprints"] if s["startDate"] <= today <= s["finishDate"]), None)

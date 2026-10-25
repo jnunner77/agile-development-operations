@@ -32,6 +32,9 @@ python3 $B brief 110                      # description, acceptance criteria and
 - The spec comes from the planner's plan (`model-roles` skill). Write it in the scratchpad, not
   the repo. `boards.py create` assigns the PBI/Bug to Justin Nunner and the tasks to Claude, puts
   all of them in the current sprint, priority 2.
+- whoami and create need the server to say who the token acts as, which Boards does only with
+  sign-in on (as on the team's live server). Against a server with sign-in off (a local or demo
+  one) they stop and say so: file tickets on the live server.
 
 ```json
 {

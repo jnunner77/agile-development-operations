@@ -86,10 +86,11 @@ endpoints a token can use, with `curl` examples.
   or put it in a URL.
 - Tokens can't change sign-in, team members, settings, integrations or backups; ask a person.
 - Link code to the items you work on as described above, so pull requests move them along.
-- Assign every Task to Claude (the member the token acts as, `GET /api/auth/status`) and every
-  PBI, Bug, Feature and Epic to Justin Nunner (`jnunner77`). Close your tasks (Done) once their
-  work is merged, except a "Validate on the live Boards server" task, which waits for the user's
-  confirmation; a merge doesn't do it for pull requests in other repositories.
+- Assign every Task to Claude (the member the token acts as, which `GET /api/auth/status` reports
+  while sign-in is on) and every PBI, Bug, Feature and Epic to Justin Nunner (`jnunner77`). Close
+  your tasks (Done) once their work is merged, except a "Validate on the live Boards server" task,
+  which waits for the user's confirmation; a merge doesn't do it for pull requests in other
+  repositories.
 
 ## Code conventions
 
