@@ -25,9 +25,10 @@ Work as `CLAUDE.md` and the `boards-tickets` skill say: ticket first, branch `wi
 `npm run typecheck`, `npm test` and `npm run build` passing (and for UI changes the e2e smoke and
 mobile tests against a fresh demo database), commit subjects ending `(AB#<pbi> AB#<task> …)`.
 
-Push, unless the branch already has an open pull request: a push would update it before any
-review. Then review the local commits first (the reviewer's `git diff origin/main...HEAD` reads the
-local `HEAD`) and push only after a pass.
+- **No open pull request yet**: push, then review.
+- **An open pull request**: don't push yet, since a push would update it before any review. Review
+  the local commits (the reviewer's `git diff origin/main...HEAD` reads the local `HEAD`) and push
+  only after a pass.
 
 ## 2. Spawn the reviewer
 

@@ -25,7 +25,10 @@ python3 $B show 110                       # the item and its tasks
 python3 $B brief 110                      # description, acceptance criteria and tasks as text
 ```
 
-## 1. Before any work: create the ticket
+## 1. Before any change: create the ticket
+
+The planner's read-only plan (`model-roles` step 1) comes first, since it writes the spec; the
+ticket is created from it before the implementer starts or any file is edited.
 
 - **PBI** (`"Product Backlog Item"`) for new or changed behaviour; **Bug** for something broken.
   Several unrelated asks get one ticket each.

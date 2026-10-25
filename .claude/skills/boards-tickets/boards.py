@@ -21,6 +21,7 @@ import urllib.request
 from datetime import date
 
 PO_USERNAME = "jnunner77"  # PBIs, Bugs, Features and Epics are assigned to Justin Nunner
+TIMEOUT = 30  # seconds to wait for the Boards server before giving up
 
 
 def call(method, path, body=None):
@@ -30,12 +31,14 @@ def call(method, path, body=None):
     req = urllib.request.Request(url + path, method=method, data=None if body is None else json.dumps(body).encode(),
                                  headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.loads(r.read() or b"null")
     except urllib.error.HTTPError as e:
         sys.exit(f"{method} {path}: HTTP {e.code} {e.read().decode(errors='replace')[:300]}")
-    except urllib.error.URLError as e:
+    except urllib.error.URLError as e:  # includes a connection that times out
         sys.exit(f"cannot reach {url}: {e.reason}")
+    except TimeoutError:  # connected, but no answer in time
+        sys.exit(f"{method} {path}: no answer from {url} in {TIMEOUT}s")
 
 
 def context():
@@ -102,10 +105,25 @@ def brief(i):
             print(f"- AB#{t['id']} [{t['state']}] {t['title']}")
 
 
+USAGE = {  # command: (arguments it needs, usage)
+    "create": (1, "create SPEC.json"), "state": (2, "state STATE ID [ID...]"), "comment": (2, 'comment ID "<p>HTML</p>"'),
+    "link": (2, "link ID URL [COMMENT]"), "show": (1, "show ID"), "brief": (1, "brief ID"),
+}
+
+
 def main(a):
     if not a or a[0] in ("-h", "--help"):
         print(__doc__); return
     cmd = a[0]
+    needs, usage = USAGE.get(cmd, (0, ""))
+    if len(a) - 1 < needs:
+        sys.exit(f"usage: boards.py {usage}")
+
+    def num(i):  # a work item id
+        if not i.isdigit():
+            sys.exit(f"usage: boards.py {usage}  (ID is a number, e.g. 110; got {i!r})")
+        return int(i)
+
     if cmd == "whoami":
         db, me, po, sprint = context()
         name = {m["id"]: m["name"] for m in db["members"]}
@@ -113,18 +131,18 @@ def main(a):
     elif cmd == "create":
         create(a[1])
     elif cmd == "state":
-        state, ids = a[1], a[2:]
+        state, ids = a[1], [num(i) for i in a[2:]]
         for i in ids:
-            r = call("PATCH", f"/api/workitems/{int(i)}", {"state": state})["result"]
+            r = call("PATCH", f"/api/workitems/{i}", {"state": state})["result"]
             print(f"{r['id']} -> {r['state']}")
     elif cmd == "comment":
-        call("POST", f"/api/workitems/{int(a[1])}/comments", {"text": a[2]}); print("commented")
+        call("POST", f"/api/workitems/{num(a[1])}/comments", {"text": a[2]}); print("commented")
     elif cmd == "link":
-        call("POST", f"/api/workitems/{int(a[1])}/hyperlinks", {"url": a[2], **({"comment": a[3]} if len(a) > 3 else {})}); print("linked")
+        call("POST", f"/api/workitems/{num(a[1])}/hyperlinks", {"url": a[2], **({"comment": a[3]} if len(a) > 3 else {})}); print("linked")
     elif cmd == "show":
-        show(int(a[1]))
+        show(num(a[1]))
     elif cmd == "brief":
-        brief(int(a[1]))
+        brief(num(a[1]))
     else:
         sys.exit(f"unknown command {cmd}\n{__doc__}")
 
