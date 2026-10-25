@@ -24,7 +24,7 @@ auth=(-H "Authorization: Bearer $BOARDS_TOKEN" -H "Content-Type: application/jso
 
 | Request | Returns |
 | --- | --- |
-| `GET /api/auth/status` | Who the token acts as (`user`) |
+| `GET /api/auth/status` | Who the token acts as (`user`; null while sign-in is off) |
 | `GET /api/bootstrap` | `{ db }`: `members`, `sprints`, `capacities`, `workItems`, `links`, `settings` |
 
 Useful lookups with `jq`:
