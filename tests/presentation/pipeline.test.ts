@@ -264,6 +264,13 @@ describe('the request pipeline', () => {
     assert.equal(limited.headers.get('retry-after'), '60');
   });
 
+  it('does not limit expensive operations for a signed-in administrator', async () => {
+    signInOn = true;
+    const post = () => fetch(`${base}/api/things`, { method: 'POST', headers: { 'X-Forwarded-For': '198.51.100.9', Authorization: 'Bearer good' } });
+    assert.equal((await post()).status, 201);
+    assert.equal((await post()).status, 201);
+  });
+
   it('bans clients that keep presenting bad tokens', async () => {
     const from = { 'X-Forwarded-For': '198.51.100.8', Authorization: 'Bearer bad' };
     signInOn = true;
@@ -382,6 +389,58 @@ describe('the request pipeline under pressure', () => {
     assert.equal(security.stats.streamsOpen, 0);
     assert.equal(feed.listening, 0);
     stillSignedIn = true;
+  });
+
+  const admin = (): Identity => ({ ...signedIn(), isAdmin: true });
+
+  it('never limits a signed-in administrator, though others from the same address are limited and blocked', async () => {
+    const options = { ip: { burst: 3, perMinute: 1 }, user: { burst: 3, perMinute: 1 }, mutations: { burst: 3, perMinute: 1 }, ban: { violations: 5, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } };
+    const post = (base: string, ip: string) => fetch(`${base}/api/nothing`, { method: 'POST', headers: { 'X-Forwarded-For': ip } });
+    const asAdmin = await serve(options, admin);
+    for (let i = 0; i < 10; i++) assert.notEqual((await post(asAdmin.base, '192.0.2.10')).status, 429);
+    const asMember = await serve(options, signedIn);
+    const statuses: number[] = [];
+    for (let i = 0; i < 10; i++) statuses.push((await post(asMember.base, '192.0.2.11')).status);
+    assert.ok(statuses.includes(429));
+    assert.equal(statuses.at(-1), 403);
+  });
+
+  it('still limits an administrator’s sign-in attempts', async () => {
+    const { base } = await serve({ signIn: { burst: 1, perMinute: 1 }, ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, admin);
+    const attempt = () => fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'X-Forwarded-For': '192.0.2.12', 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal((await attempt()).status, 401);
+    assert.equal((await attempt()).status, 429);
+  });
+
+  it('lets an administrator past the per-person and per-address live connection caps, but not the server-wide one', async () => {
+    const { base, security } = await serve({ streamsPerIp: 1, streamsPerUser: 1, streamsTotal: 3 }, admin);
+    const controllers = [0, 1, 2].map(() => new AbortController());
+    for (const c of controllers) assert.equal((await fetch(`${base}/api/events`, { signal: c.signal, headers: { 'X-Forwarded-For': '192.0.2.13' } })).status, 200);
+    assert.equal(security.stats.streamsOpen, 3);
+    const full = await fetch(`${base}/api/events`, { headers: { 'X-Forwarded-For': '192.0.2.13' } });
+    assert.equal(full.status, 503);
+    for (const c of controllers) c.abort();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(security.stats.streamsOpen, 0);
+  });
+
+  it('never counts an administrator’s missing endpoints towards a block', async () => {
+    const options = { ban: { violations: 1000, authFailures: 1000, notFound: 2, windowMs: 60_000, durationMs: 60_000 } };
+    const asAdmin = await serve(options, admin);
+    for (let i = 0; i < 6; i++) assert.equal((await fetch(`${asAdmin.base}/api/nope`, { headers: { 'X-Forwarded-For': '192.0.2.14' } })).status, 404);
+    assert.equal(asAdmin.security.isBanned('192.0.2.14'), false);
+    const asMember = await serve(options, signedIn);
+    for (let i = 0; i < 2; i++) await fetch(`${asMember.base}/api/nope`, { headers: { 'X-Forwarded-For': '192.0.2.15' } });
+    assert.equal(asMember.security.isBanned('192.0.2.15'), true);
+  });
+
+  it('still turns an administrator away from a blocked address', async () => {
+    const { base } = await serve({ ip: { burst: 1, perMinute: 1 }, ban: { violations: 2, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, admin);
+    const from = { headers: { 'X-Forwarded-For': '192.0.2.16' } };
+    // Static files stay under the per-IP limit, so scanning them earns a block.
+    for (let i = 0; i < 3; i++) await fetch(`${base}/somewhere`, from);
+    const res = await fetch(`${base}/api/things`, from);
+    assert.equal(res.status, 403);
   });
 
   it('refuses new live connections once the server is full', async () => {

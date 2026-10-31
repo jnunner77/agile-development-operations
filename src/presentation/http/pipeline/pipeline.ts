@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { exemptFromRateLimits } from '#application/access.ts';
 import type { Caller } from '#application/caller.ts';
 import type { LoadProject } from '#application/project/load-project.ts';
 import type { WatchChanges } from '#application/project/watch-changes.ts';
@@ -39,6 +40,8 @@ interface Known {
   readonly secure: boolean;
   identity: RequestIdentity | undefined;
   caller: Caller | undefined;
+  /** A signed-in administrator, who is not held to the operation rate limits. */
+  unlimited: boolean;
 }
 
 const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
@@ -82,8 +85,9 @@ function claimedUser(req: IncomingMessage): string | null {
 }
 
 /**
- * Every request, in order: security headers; bans and the per-IP limit; then for the API no-store,
- * the health check, the cross-site check, identifying the caller, per-user and sign-in limits, the
+ * Every request, in order: security headers; bans and, for static files, the per-IP limit; then for
+ * the API no-store, the health check, the cross-site check, identifying the caller, the per-IP and
+ * per-user limits (skipped for a signed-in administrator) and the sign-in limit (never skipped), the
  * sign-in gate, and the routes, bootstrap or the live update stream. Anything else is the client.
  */
 export function requestPipeline(options: PipelineOptions): (req: IncomingMessage, res: ServerResponse) => void {
@@ -105,6 +109,7 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     heavyOperation: (req, res) => {
       if (!security) return true;
       const state = knownOf(req);
+      if (state.unlimited) return true;
       const refusal = security.heavy(state.ip, memberOf(state));
       if (refusal) refuse(res, refusal);
       return !refusal;
@@ -117,7 +122,7 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     if (req.destroyed || res.destroyed) return;
     let release = () => {};
     if (security) {
-      const stream = security.openStream(state.ip, memberOf(state));
+      const stream = security.openStream(state.ip, memberOf(state), state.unlimited);
       if ('status' in stream) return refuse(res, stream);
       release = stream.release;
     }
@@ -174,9 +179,10 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     // sign-in turns them away.
     const identity = await authenticator.identify(req);
     state.identity = identity;
+    state.unlimited = exemptFromRateLimits(identity.identity);
     if (security) {
       const limited =
-        security.apiLimit(state.ip, method, identity.identity.member, options.signInEnabled()) ??
+        (state.unlimited ? null : (security.perIp(state.ip) ?? security.apiLimit(state.ip, method, identity.identity.member, options.signInEnabled()))) ??
         (method === 'POST' && SIGN_IN_ROUTE.test(path) ? security.signInAttempt(state.ip, res) : null);
       if (limited) return refuse(res, limited);
     }
@@ -203,12 +209,15 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     const url = requestTarget(req.url);
     const path = url.split('?')[0] || '/';
     const { ip, secure } = clientAddress(req, trust);
-    const state: Known = { ip, secure, identity: undefined, caller: undefined };
+    const state: Known = { ip, secure, identity: undefined, caller: undefined, unlimited: false };
     known.set(req, state);
     if (security) {
-      const refusal = security.admit(ip, path);
+      const lowerPath = path.toLowerCase();
+      const isApi = lowerPath === '/api' || lowerPath.startsWith('/api/');
+      // For the API the per-IP limit waits until the caller is known (administrators are exempt).
+      const refusal = isApi ? security.blocked(ip) : security.admit(ip, path);
       if (refusal) return refuse(res, refusal);
-      security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false);
+      security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false, () => state.unlimited);
     }
     const lower = path.toLowerCase();
     if (lower === '/api' || lower.startsWith('/api/')) return api(req, res, state, url.slice(4) || '/');
