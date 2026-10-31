@@ -43,7 +43,7 @@ with automatic HTTPS. [`deploy/README.md`](deploy/README.md) walks through hosti
 Google Cloud e2-micro VM with a DuckDNS host name, plus upgrades, backups and troubleshooting,
 and describes the built-in protections (rate limits, temporary blocks, security headers,
 hardened containers) in its *Security* section. Administrators signed in through the browser aren't
-rate limited, so bulk clean-ups don't hit `429`.
+rate limited (except sign-in attempts), so bulk clean-ups don't hit `429`.
 
 ```bash
 cp deploy/.env.example .env    # set DOMAIN

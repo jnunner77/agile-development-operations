@@ -405,6 +405,29 @@ describe('the request pipeline under pressure', () => {
     assert.equal(statuses.at(-1), 403);
   });
 
+  it('limits an address again once its administrator is demoted or signs out', async () => {
+    const options = { ip: { burst: 2, perMinute: 1 }, ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } };
+    let current: Identity = admin();
+    const { base } = await serve(options, () => current);
+    const call = () => fetch(`${base}/api/nothing`, { method: 'POST', headers: { 'X-Forwarded-For': '192.0.2.15' } });
+    for (let i = 0; i < 5; i++) assert.notEqual((await call()).status, 429);
+    current = signedIn();
+    const afterDemotion: number[] = [];
+    for (let i = 0; i < 4; i++) afterDemotion.push((await call()).status);
+    assert.ok(afterDemotion.includes(429));
+    current = { signInEnabled: true, member: null, isAdmin: false, via: 'none', token: null, invalidToken: false };
+    assert.equal((await call()).status, 429);
+  });
+
+  it('counts cross-site API requests against the per-address limit', async () => {
+    const options = { ip: { burst: 2, perMinute: 1 }, ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } };
+    const { base } = await serve(options, admin);
+    const call = () => fetch(`${base}/api/things`, { method: 'POST', headers: { 'X-Forwarded-For': '192.0.2.16', Origin: 'https://evil.example' } });
+    assert.equal((await call()).status, 403);
+    assert.equal((await call()).status, 403);
+    assert.equal((await call()).status, 429);
+  });
+
   it('still limits an administrator’s sign-in attempts', async () => {
     const { base } = await serve({ signIn: { burst: 1, perMinute: 1 }, ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, admin);
     const attempt = () => fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'X-Forwarded-For': '192.0.2.12', 'Content-Type': 'application/json' }, body: '{}' });

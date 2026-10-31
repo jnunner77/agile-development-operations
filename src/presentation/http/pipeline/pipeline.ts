@@ -173,7 +173,8 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
 
     if (security) {
       const crossSite = security.sameOrigin(method, { origin: header(req, 'origin'), host: header(req, 'host'), fetchSite: header(req, 'sec-fetch-site') });
-      if (crossSite) return refuse(res, crossSite);
+      // A legitimate administrator's request is never cross-site, so these still use the per-IP limit.
+      if (crossSite) return refuse(res, security.perIp(state.ip) ?? crossSite);
     }
     // Identify the caller first, so limits apply per person, and to anonymous callers before
     // sign-in turns them away.
@@ -215,7 +216,7 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
       const lowerPath = path.toLowerCase();
       const isApi = lowerPath === '/api' || lowerPath.startsWith('/api/');
       // For the API the per-IP limit waits until the caller is known (administrators are exempt).
-      const refusal = isApi ? security.blocked(ip) : security.admit(ip, path);
+      const refusal = isApi ? security.blocked(ip) : security.admit(ip);
       if (refusal) return refuse(res, refusal);
       security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false, () => state.unlimited);
     }

@@ -294,11 +294,11 @@ export class Security {
   }
 
   /**
-   * First check for every request: turns away banned clients and applies the per-IP limit (the
-   * health check is exempt). `path` is the request path, without the query string.
+   * First check for every non-API request: turns away banned clients and applies the per-IP limit.
+   * (API requests wait until the caller is known; the health check is answered before any limit.)
    */
-  admit(ip: string, path: string): Refusal | null {
-    return this.blocked(ip) ?? (path === '/api/health' ? null : this.perIp(ip));
+  admit(ip: string): Refusal | null {
+    return this.blocked(ip) ?? this.perIp(ip);
   }
 
   /** Turns away banned clients. */
