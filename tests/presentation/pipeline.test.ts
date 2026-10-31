@@ -177,6 +177,7 @@ describe('the request pipeline', () => {
           return { identity: identityFor(req), sessionToken: undefined };
         },
         stillSignedIn: async () => true,
+        sessionOnly: async () => null,
       },
       signInEnabled: () => signInOn,
       resolveCaller: new ResolveCaller({ team: { all: async () => [BO], findById: async (id) => (id === 'm2' ? BO : undefined) } }),
@@ -324,7 +325,7 @@ describe('the request pipeline under pressure', () => {
           await new Promise((r) => setTimeout(r, 30)); // a slow password check
           sendJson(res, 401, { error: 'Incorrect username or password' });
         }),
-      authenticator: { identify: async () => ({ identity: identify(), sessionToken: 'session' }), stillSignedIn: async () => stillSignedIn },
+      authenticator: { identify: async () => ({ identity: identify(), sessionToken: 'session' }), stillSignedIn: async () => stillSignedIn, sessionOnly: async (req) => (req.headers.cookie ? identify() : null) },
       signInEnabled: () => false,
       resolveCaller: new ResolveCaller({ team: { all: async () => [], findById: async () => undefined } }),
       loadProject: { execute: async () => ({ db: emptyDatabase(), serverTime: '' }) },
@@ -459,11 +460,27 @@ describe('the request pipeline under pressure', () => {
 
   it('still turns an administrator away from a blocked address', async () => {
     const { base } = await serve({ ip: { burst: 1, perMinute: 1 }, ban: { violations: 2, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, admin);
-    const from = { headers: { 'X-Forwarded-For': '192.0.2.16' } };
-    // Static files stay under the per-IP limit, so scanning them earns a block.
-    for (let i = 0; i < 3; i++) await fetch(`${base}/somewhere`, from);
-    const res = await fetch(`${base}/api/things`, from);
-    assert.equal(res.status, 403);
+    const anonymous = { headers: { 'X-Forwarded-For': '192.0.2.17' } };
+    const asAdmin = { headers: { 'X-Forwarded-For': '192.0.2.17', Cookie: 'boards_session=x' } };
+    // Anonymous page loads stay under the per-IP limit, so scanning them earns a block.
+    for (let i = 0; i < 3; i++) await fetch(`${base}/somewhere`, anonymous);
+    assert.equal((await fetch(`${base}/api/things`, asAdmin)).status, 403);
+    assert.equal((await fetch(`${base}/index.html`, asAdmin)).status, 403);
+  });
+
+  it("never limits a signed-in administrator's page loads, or counts them towards a block", async () => {
+    const { base, security } = await serve({ ip: { burst: 1, perMinute: 1 }, ban: { violations: 2, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 } }, admin);
+    const headers = { 'X-Forwarded-For': '192.0.2.18' };
+    for (let i = 0; i < 6; i++) assert.notEqual((await fetch(`${base}/somewhere`, { headers: { ...headers, Cookie: 'boards_session=x' } })).status, 429);
+    assert.equal(security.isBanned('192.0.2.18'), false);
+    assert.equal((await fetch(`${base}/somewhere`, { headers })).status, 404);
+  });
+
+  it("still limits a signed-in member's page loads", async () => {
+    const { base } = await serve({ ip: { burst: 1, perMinute: 1 } }, signedIn);
+    const init = { headers: { 'X-Forwarded-For': '192.0.2.19', Cookie: 'boards_session=x' } };
+    assert.notEqual((await fetch(`${base}/somewhere`, init)).status, 429);
+    assert.equal((await fetch(`${base}/somewhere`, init)).status, 429);
   });
 
   it('refuses new live connections once the server is full', async () => {

@@ -296,6 +296,13 @@ describe('signed-in administrators', () => {
     for (let i = 0; i < 3; i++) expect((await admin.post('/api/snapshots').set(from('20.0.0.1')).send({ name: `s${i}` })).status).toBe(201);
   });
 
+  it("loads pages without using the address's allowance", async () => {
+    const { signIn, app } = await team({ ...tight, ip: { burst: 2, perMinute: 1 } });
+    const admin = await signIn('ada', '20.0.0.6');
+    for (let i = 0; i < 10; i++) expect((await admin.get('/').set(from('20.0.0.6'))).status, `page ${i}`).not.toBe(429);
+    expect((await request(app).get('/').set(from('20.0.0.6'))).status).not.toBe(429);
+  });
+
   it('still limits a signed-in member from the same address', async () => {
     const { signIn } = await team(tight);
     const admin = await signIn('ada', '20.0.0.2');

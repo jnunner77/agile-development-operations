@@ -18,7 +18,7 @@ import { staticFiles } from './static-files.ts';
 export interface PipelineOptions {
   /** The API routes (relative to /api), given what the pipeline knows about each request. */
   readonly routes: (context: RequestContext) => Pick<Router, 'handle' | 'owns'>;
-  readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn'>;
+  readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn' | 'sessionOnly'>;
   /** Whether sign-in is on now, for the per-request rate limits. */
   readonly signInEnabled: () => boolean;
   readonly resolveCaller: Pick<ResolveCaller, 'execute'>;
@@ -40,7 +40,7 @@ interface Known {
   readonly secure: boolean;
   identity: RequestIdentity | undefined;
   caller: Caller | undefined;
-  /** A signed-in administrator, who is not held to the operation rate limits. */
+  /** A signed-in administrator (by session), who is not held to the rate limits; set for pages before the API's identify. */
   unlimited: boolean;
 }
 
@@ -85,7 +85,8 @@ function claimedUser(req: IncomingMessage): string | null {
 }
 
 /**
- * Every request, in order: security headers; bans and, for static files, the per-IP limit; then for
+ * Every request, in order: security headers; bans (for everyone); for static files, the per-IP limit
+ * (skipped when the session cookie is a signed-in administrator's, which is not counted as activity); then for
  * the API no-store, the health check, the cross-site check, identifying the caller, the per-IP and
  * per-user limits (skipped for a signed-in administrator) and the sign-in limit (never skipped), the
  * sign-in gate, and the routes, bootstrap or the live update stream. Anything else is the client.
@@ -212,16 +213,23 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     const { ip, secure } = clientAddress(req, trust);
     const state: Known = { ip, secure, identity: undefined, caller: undefined, unlimited: false };
     known.set(req, state);
+    const lowerPath = path.toLowerCase();
+    const isApi = lowerPath === '/api' || lowerPath.startsWith('/api/');
     if (security) {
-      const lowerPath = path.toLowerCase();
-      const isApi = lowerPath === '/api' || lowerPath.startsWith('/api/');
+      // Blocks apply to everyone at the address, before anyone is identified.
+      const banned = security.blocked(ip);
+      if (banned) return refuse(res, banned);
+      if (!isApi) {
+        // Pages and assets: a signed-in administrator's session cookie exempts them from the per-IP limit.
+        const who = await authenticator.sessionOnly(req);
+        state.unlimited = who !== null && exemptFromRateLimits(who);
+        const limited = state.unlimited ? null : security.perIp(ip);
+        if (limited) return refuse(res, limited);
+      }
       // For the API the per-IP limit waits until the caller is known (administrators are exempt).
-      const refusal = isApi ? security.blocked(ip) : security.admit(ip);
-      if (refusal) return refuse(res, refusal);
       security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false, () => state.unlimited);
     }
-    const lower = path.toLowerCase();
-    if (lower === '/api' || lower.startsWith('/api/')) return api(req, res, state, url.slice(4) || '/');
+    if (isApi) return api(req, res, state, url.slice(4) || '/');
     if (client && (await client(req, res, path))) return;
     sendJson(res, 404, { error: 'Not found' });
   }

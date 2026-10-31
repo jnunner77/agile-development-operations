@@ -293,21 +293,13 @@ export class Security {
     return tooMany(r.retryAfterMs, what);
   }
 
-  /**
-   * First check for every non-API request: turns away banned clients and applies the per-IP limit.
-   * (API requests wait until the caller is known; the health check is answered before any limit.)
-   */
-  admit(ip: string): Refusal | null {
-    return this.blocked(ip) ?? this.perIp(ip);
-  }
-
-  /** Turns away banned clients. */
+  /** Turns away banned clients; the first check on every request. */
   blocked(ip: string): Refusal | null {
     if (this.isBanned(ip)) return { status: 403, message: 'Access from your network is temporarily blocked.', close: true };
     return null;
   }
 
-  /** The per-IP limit on every request. */
+  /** The per-IP limit, skipped for a signed-in administrator. */
   perIp(ip: string): Refusal | null {
     return this.check(this.ipBucket, ip, ip);
   }
