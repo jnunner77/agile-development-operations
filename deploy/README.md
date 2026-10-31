@@ -211,17 +211,18 @@ The app is built to sit on the open internet. Protections, from the outside in:
 | --- | --- |
 | Google Cloud firewall | Only ports 80 and 443 are open to the world (and SSH, until you lock it down below). |
 | Caddy | HTTPS only (HTTP redirects), HSTS; drops slow or oversized requests (10 s to send headers, 60 s for a body, 60 MB max, 16 KB of headers); closes the connection on well-known attack-scanner paths (`/.env`, `/wp-admin`, `*.php`, …); allows only the HTTP methods the app uses. |
-| App: rate limits | Per client IP for everything; per signed-in person for API use and for changes; a strict limit for anonymous callers while sign-in is on; 5 sign-in attempts per minute per IP; backups, snapshots and imports limited to about one a minute. Limited requests get `429` with `Retry-After`. |
-| App: temporary blocks | An IP is blocked for an hour after repeatedly hitting limits, 20 failed sign-ins in 10 minutes, or probing many non-existent API paths. Blocks are logged (`docker compose logs app | grep security`). |
+| App: rate limits | Per client IP for everything; per signed-in person for API use and for changes; a strict limit for anonymous callers while sign-in is on; 5 sign-in attempts per minute per IP; backups, snapshots and imports limited to about one a minute. Administrators signed in through the browser are exempt from all of these except sign-in attempts (API tokens, even an administrator's, are always limited). Limited requests get `429` with `Retry-After`. |
+| App: temporary blocks | An IP is blocked for an hour after repeatedly hitting limits, 20 failed sign-ins in 10 minutes, or probing many non-existent API paths; a signed-in administrator's missing endpoints and limit hits never count towards a block (failed sign-ins still do), but a block turns away everyone at the blocked address, administrators included. Blocks are logged (`docker compose logs app | grep security`). |
 | App: sign-in | Per-username lockout after 5 wrong passwords; slow salted password hashing, with at most 4 checks running at once so floods can't exhaust the CPU; sessions end after the inactivity timeout and after 24 hours regardless; at most 20 sessions per person. |
-| App: requests | 2 MB body limit (50 MB only for an administrator importing a backup, checked before the upload is read); changes from other websites are refused (cross-site request forgery); at most 10 live-update connections per person and 50 per IP; slow-request timeouts. |
+| App: requests | 2 MB body limit (50 MB only for an administrator importing a backup, checked before the upload is read); changes from other websites are refused (cross-site request forgery); at most 10 live-update connections per person and 50 per IP (administrators exempt; 500 in all); slow-request timeouts. |
 | App: browser | Strict Content Security Policy (scripts, styles and connections only from the app itself), no framing, `nosniff`, no referrer leaks, API responses never cached; all rich text is sanitized. |
 | Containers | Read-only file systems (only the data volume and a small `/tmp` are writable), all Linux capabilities dropped (Caddy keeps only the right to bind ports 80/443), no privilege escalation, memory and process limits, rotated logs. The app runs as an unprivileged user. |
 
 **Shared office addresses.** Limits apply per IP before sign-in, so many people behind one
 office address share that IP's allowance. If an office gets limited or blocked, add its public
 address to `SECURITY_ALLOWLIST` in `.env` (e.g. `SECURITY_ALLOWLIST=203.0.113.10`, or a range such
-as `203.0.113.0/24`) and run `docker compose up -d`.
+as `203.0.113.0/24`) and run `docker compose up -d`. A signed-in administrator isn't limited after signing in, even from a
+shared address.
 
 **Lifting a block early:** `docker compose restart app` clears all blocks and limits.
 

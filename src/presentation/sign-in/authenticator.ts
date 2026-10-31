@@ -25,6 +25,13 @@ export class Authenticator {
     return { identity, sessionToken };
   }
 
+  /** Who a request's session cookie belongs to, without counting it as activity; null when it carries none. API tokens are ignored (they are always rate limited). */
+  async sessionOnly(req: IncomingMessage): Promise<Identity | null> {
+    const sessionToken = readCookie(req, SESSION_COOKIE);
+    if (!sessionToken) return null;
+    return this.#identify.execute({ sessionToken, touch: false });
+  }
+
   /** For long-lived streams: whether the session is still good (always, with sign-in off). */
   async stillSignedIn(sessionToken: string | undefined): Promise<boolean> {
     const identity = await this.#identify.execute({ sessionToken, touch: false });

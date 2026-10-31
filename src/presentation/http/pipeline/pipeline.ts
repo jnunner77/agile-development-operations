@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { exemptFromRateLimits } from '#application/access.ts';
 import type { Caller } from '#application/caller.ts';
 import type { LoadProject } from '#application/project/load-project.ts';
 import type { WatchChanges } from '#application/project/watch-changes.ts';
@@ -17,7 +18,7 @@ import { staticFiles } from './static-files.ts';
 export interface PipelineOptions {
   /** The API routes (relative to /api), given what the pipeline knows about each request. */
   readonly routes: (context: RequestContext) => Pick<Router, 'handle' | 'owns'>;
-  readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn'>;
+  readonly authenticator: Pick<Authenticator, 'identify' | 'stillSignedIn' | 'sessionOnly'>;
   /** Whether sign-in is on now, for the per-request rate limits. */
   readonly signInEnabled: () => boolean;
   readonly resolveCaller: Pick<ResolveCaller, 'execute'>;
@@ -39,6 +40,8 @@ interface Known {
   readonly secure: boolean;
   identity: RequestIdentity | undefined;
   caller: Caller | undefined;
+  /** A signed-in administrator (by session), who is not held to the rate limits; set for pages before the API's identify. */
+  unlimited: boolean;
 }
 
 const ANONYMOUS: Caller = { name: 'Anonymous', memberId: null, mayModerateComments: false, admin: 'not-admin', origin: undefined };
@@ -82,8 +85,10 @@ function claimedUser(req: IncomingMessage): string | null {
 }
 
 /**
- * Every request, in order: security headers; bans and the per-IP limit; then for the API no-store,
- * the health check, the cross-site check, identifying the caller, per-user and sign-in limits, the
+ * Every request, in order: security headers; bans (for everyone); for static files, the per-IP limit
+ * (skipped when the session cookie is a signed-in administrator's, which is not counted as activity); then for
+ * the API no-store, the health check, the cross-site check, identifying the caller, the per-IP and
+ * per-user limits (skipped for a signed-in administrator) and the sign-in limit (never skipped), the
  * sign-in gate, and the routes, bootstrap or the live update stream. Anything else is the client.
  */
 export function requestPipeline(options: PipelineOptions): (req: IncomingMessage, res: ServerResponse) => void {
@@ -105,6 +110,7 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     heavyOperation: (req, res) => {
       if (!security) return true;
       const state = knownOf(req);
+      if (state.unlimited) return true;
       const refusal = security.heavy(state.ip, memberOf(state));
       if (refusal) refuse(res, refusal);
       return !refusal;
@@ -117,7 +123,7 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     if (req.destroyed || res.destroyed) return;
     let release = () => {};
     if (security) {
-      const stream = security.openStream(state.ip, memberOf(state));
+      const stream = security.openStream(state.ip, memberOf(state), state.unlimited);
       if ('status' in stream) return refuse(res, stream);
       release = stream.release;
     }
@@ -168,15 +174,17 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
 
     if (security) {
       const crossSite = security.sameOrigin(method, { origin: header(req, 'origin'), host: header(req, 'host'), fetchSite: header(req, 'sec-fetch-site') });
-      if (crossSite) return refuse(res, crossSite);
+      // A legitimate administrator's request is never cross-site, so these still use the per-IP limit.
+      if (crossSite) return refuse(res, security.perIp(state.ip) ?? crossSite);
     }
     // Identify the caller first, so limits apply per person, and to anonymous callers before
     // sign-in turns them away.
     const identity = await authenticator.identify(req);
     state.identity = identity;
+    state.unlimited = exemptFromRateLimits(identity.identity);
     if (security) {
       const limited =
-        security.apiLimit(state.ip, method, identity.identity.member, options.signInEnabled()) ??
+        (state.unlimited ? null : (security.perIp(state.ip) ?? security.apiLimit(state.ip, method, identity.identity.member, options.signInEnabled()))) ??
         (method === 'POST' && SIGN_IN_ROUTE.test(path) ? security.signInAttempt(state.ip, res) : null);
       if (limited) return refuse(res, limited);
     }
@@ -203,15 +211,25 @@ export function requestPipeline(options: PipelineOptions): (req: IncomingMessage
     const url = requestTarget(req.url);
     const path = url.split('?')[0] || '/';
     const { ip, secure } = clientAddress(req, trust);
-    const state: Known = { ip, secure, identity: undefined, caller: undefined };
+    const state: Known = { ip, secure, identity: undefined, caller: undefined, unlimited: false };
     known.set(req, state);
+    const lowerPath = path.toLowerCase();
+    const isApi = lowerPath === '/api' || lowerPath.startsWith('/api/');
     if (security) {
-      const refusal = security.admit(ip, path);
-      if (refusal) return refuse(res, refusal);
-      security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false);
+      // Blocks apply to everyone at the address, before anyone is identified.
+      const banned = security.blocked(ip);
+      if (banned) return refuse(res, banned);
+      if (!isApi) {
+        // Pages and assets: a signed-in administrator's session cookie exempts them from the per-IP limit.
+        const who = await authenticator.sessionOnly(req);
+        state.unlimited = who !== null && exemptFromRateLimits(who);
+        const limited = state.unlimited ? null : security.perIp(ip);
+        if (limited) return refuse(res, limited);
+      }
+      // For the API the per-IP limit waits until the caller is known (administrators are exempt).
+      security.watch(res, ip, path, () => state.identity?.identity.invalidToken ?? false, () => state.unlimited);
     }
-    const lower = path.toLowerCase();
-    if (lower === '/api' || lower.startsWith('/api/')) return api(req, res, state, url.slice(4) || '/');
+    if (isApi) return api(req, res, state, url.slice(4) || '/');
     if (client && (await client(req, res, path))) return;
     sendJson(res, 404, { error: 'Not found' });
   }

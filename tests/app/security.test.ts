@@ -253,3 +253,82 @@ describe('allowlist', () => {
     expect((await request(app).get('/api/bootstrap').set(from('10.2.0.1'))).status).toBe(429);
   });
 });
+
+describe('signed-in administrators', () => {
+  const tight: Partial<SecurityOptions> = {
+    ip: { burst: 5, perMinute: 1 },
+    user: { burst: 5, perMinute: 1 },
+    mutations: { burst: 3, perMinute: 1 },
+    heavy: { burst: 1, perMinute: 1 },
+    anonymous: { burst: 100, perMinute: 100 },
+    signIn: { burst: 100, perMinute: 100 },
+    ban: { violations: 1000, authFailures: 1000, notFound: 1000, windowMs: 60_000, durationMs: 60_000 },
+    // The setup requests (no forwarded address) are not what's being measured.
+    allowlist: ['127.0.0.1', '::1'],
+  };
+
+  /** Ada (administrator) and Bo (member) with passwords, sign-in on. */
+  async function team(options: Partial<SecurityOptions>) {
+    const built = build(options);
+    const { app } = built;
+    const ada = (await request(app).post('/api/members').send({ name: 'Ada', username: 'ada' })).body.result.id as string;
+    const bo = (await request(app).post('/api/members').send({ name: 'Bo', username: 'bo' })).body.result.id as string;
+    await request(app).patch(`/api/auth/accounts/${ada}`).send({ isAdmin: true });
+    for (const id of [ada, bo]) await request(app).post(`/api/auth/accounts/${id}/password`).send({ password: 'correct horse', mustChange: false });
+    expect((await request(app).put('/api/auth/settings').send({ enabled: true })).status).toBe(200);
+    const signIn = async (username: string, ip: string) => {
+      const agent = request.agent(app);
+      expect((await agent.post('/api/auth/login').set(from(ip)).send({ username, password: 'correct horse' })).body.status).toBe('ok');
+      return agent;
+    };
+    return { ...built, ada, bo, signIn };
+  }
+
+  it('can create and delete work items and take snapshots without hitting a limit', async () => {
+    const { signIn } = await team(tight);
+    const admin = await signIn('ada', '20.0.0.1');
+    for (let i = 0; i < 30; i++) {
+      const created = await admin.post('/api/workitems').set(from('20.0.0.1')).send({ type: 'Task', title: `t${i}` });
+      expect(created.status, `create ${i}`).toBe(201);
+      const removed = await admin.delete(`/api/workitems/${created.body.result.id}`).set(from('20.0.0.1'));
+      expect(removed.status < 300, `delete ${i}`).toBe(true);
+    }
+    for (let i = 0; i < 3; i++) expect((await admin.post('/api/snapshots').set(from('20.0.0.1')).send({ name: `s${i}` })).status).toBe(201);
+  });
+
+  it("loads pages without using the address's allowance", async () => {
+    const { signIn, app } = await team({ ...tight, ip: { burst: 2, perMinute: 1 } });
+    const admin = await signIn('ada', '20.0.0.6');
+    for (let i = 0; i < 10; i++) expect((await admin.get('/').set(from('20.0.0.6'))).status, `page ${i}`).not.toBe(429);
+    expect((await request(app).get('/').set(from('20.0.0.6'))).status).not.toBe(429);
+  });
+
+  it('still limits a signed-in member from the same address', async () => {
+    const { signIn } = await team(tight);
+    const admin = await signIn('ada', '20.0.0.2');
+    const member = await signIn('bo', '20.0.0.2');
+    for (let i = 0; i < 10; i++) expect((await admin.post('/api/workitems').set(from('20.0.0.2')).send({ type: 'Task', title: 'a' })).status).toBe(201);
+    const statuses = [];
+    for (let i = 0; i < 5; i++) statuses.push((await member.post('/api/workitems').set(from('20.0.0.2')).send({ type: 'Task', title: 'b' })).status);
+    expect(statuses).toContain(429);
+  });
+
+  it('still limits an API token, even the administrator’s', async () => {
+    const { ada, signIn, app } = await team(tight);
+    const admin = await signIn('ada', '20.0.0.3');
+    const made = await admin.post('/api/auth/tokens').set(from('20.0.0.3')).send({ name: 'script', scope: 'write', memberId: ada });
+    expect(made.status).toBe(201);
+    const bearer = { Authorization: `Bearer ${made.body.token as string}`, ...from('20.0.0.4') };
+    const statuses = [];
+    for (let i = 0; i < 6; i++) statuses.push((await request(app).post('/api/workitems').set(bearer).send({ type: 'Task', title: 'x' })).status);
+    expect(statuses.slice(0, 3)).toEqual([201, 201, 201]);
+    expect(statuses).toContain(429);
+  });
+
+  it('still limits the administrator’s sign-in attempts', async () => {
+    const { signIn } = await team({ ...tight, signIn: { burst: 3, perMinute: 1 } });
+    const admin = await signIn('ada', '20.0.0.5');
+    const wrong = async () => (await admin.post('/api/auth/login').set(from('20.0.0.5')).send({ username: 'ada', password: 'wrong password' })).status;
+    expect([await wrong(), await wrong(), await wrong()]).toEqual([401, 401, 429]);
+  });
+});

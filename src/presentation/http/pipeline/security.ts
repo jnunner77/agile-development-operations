@@ -16,7 +16,7 @@ export interface SecurityOptions {
   ip: Limit;
   /** API requests without a signed-in user, per IP (only while sign-in is on). */
   anonymous: Limit;
-  /** API requests per signed-in user (or per IP while sign-in is off). */
+  /** API requests per signed-in user (or per IP while sign-in is off). Administrators signed in are exempt. */
   user: Limit;
   /** Changes (POST/PUT/PATCH/DELETE) per signed-in user (or per IP while sign-in is off). */
   mutations: Limit;
@@ -24,7 +24,7 @@ export interface SecurityOptions {
   signIn: Limit;
   /** Expensive admin operations (export, import, snapshots, reset) per user. */
   heavy: Limit;
-  /** Live-update connections open at once. */
+  /** Live-update connections open at once (administrators signed in are exempt from the per-user and per-IP caps). */
   streamsPerUser: number;
   streamsPerIp: number;
   streamsTotal: number;
@@ -293,25 +293,27 @@ export class Security {
     return tooMany(r.retryAfterMs, what);
   }
 
-  /**
-   * First check for every request: turns away banned clients and applies the per-IP limit (the
-   * health check is exempt). `path` is the request path, without the query string.
-   */
-  admit(ip: string, path: string): Refusal | null {
+  /** Turns away banned clients; the first check on every request. */
+  blocked(ip: string): Refusal | null {
     if (this.isBanned(ip)) return { status: 403, message: 'Access from your network is temporarily blocked.', close: true };
-    if (path === '/api/health') return null;
+    return null;
+  }
+
+  /** The per-IP limit, skipped for a signed-in administrator. */
+  perIp(ip: string): Refusal | null {
     return this.check(this.ipBucket, ip, ip);
   }
 
   /**
    * Watch a response for signs of abuse: failed sign-ins (or an invalid API token) and scanning
-   * for endpoints that don't exist. Paths compare case-insensitively, like routing.
+   * for endpoints that don't exist. Paths compare case-insensitively, like routing. Requests from
+   * `unlimited` callers (signed-in administrators) never count as probing.
    */
-  watch(res: ServerResponse, ip: string, path: string, invalidToken: () => boolean): void {
+  watch(res: ServerResponse, ip: string, path: string, invalidToken: () => boolean, unlimited: () => boolean = () => false): void {
     const lower = path.toLowerCase().replace(/(.)\/$/, '$1');
     res.on('finish', () => {
       if (res.statusCode === 401 && (SIGN_IN_PATHS.has(lower) || invalidToken())) this.count(this.authFailures, ip, this.options.ban.authFailures, 'too many failed sign-in attempts');
-      else if (res.statusCode === 404 && lower.startsWith('/api/')) this.count(this.notFounds, ip, this.options.ban.notFound, 'probing for API endpoints');
+      else if (res.statusCode === 404 && lower.startsWith('/api/') && !unlimited()) this.count(this.notFounds, ip, this.options.ban.notFound, 'probing for API endpoints');
     });
   }
 
@@ -346,15 +348,15 @@ export class Security {
   }
 
   /** Reserve a live-update connection: a function that releases it, or why there is none. */
-  openStream(ip: string, member: LimitedMember | null): { readonly release: () => void } | Refusal {
+  openStream(ip: string, member: LimitedMember | null, unlimited = false): { readonly release: () => void } | Refusal {
     const ipKey = `ip:${ip}`;
     const memberKey = member ? `m:${member.id}` : null;
     const o = this.options;
     if (this.streamsOpen >= o.streamsTotal) return { status: 503, message: 'Too many live connections. Try again later.' };
-    if ((this.streams.get(ipKey) ?? 0) >= o.streamsPerIp || (memberKey && (this.streams.get(memberKey) ?? 0) >= o.streamsPerUser)) {
+    if (!unlimited && ((this.streams.get(ipKey) ?? 0) >= o.streamsPerIp || (memberKey && (this.streams.get(memberKey) ?? 0) >= o.streamsPerUser))) {
       return tooMany(10_000, 'open tabs');
     }
-    const keys = memberKey ? [ipKey, memberKey] : [ipKey];
+    const keys = unlimited ? [] : memberKey ? [ipKey, memberKey] : [ipKey];
     this.streamsOpen++;
     for (const k of keys) this.streams.set(k, (this.streams.get(k) ?? 0) + 1);
     let released = false;

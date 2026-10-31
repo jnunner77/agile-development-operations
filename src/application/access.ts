@@ -26,3 +26,12 @@ export function mayModerateCommentsOf(identity: Identity): boolean {
   if (identity.via === 'token') return false;
   return !identity.signInEnabled || identity.isAdmin;
 }
+
+/**
+ * Who is never held to the operation rate limits: only an administrator signed in with a session
+ * while sign-in is on. Never an API token, and nobody while sign-in is off. Sign-in attempts and
+ * lockouts apply to everyone.
+ */
+export function exemptFromRateLimits(identity: Identity): boolean {
+  return identity.via === 'session' && identity.signInEnabled && identity.isAdmin && identity.member !== null;
+}

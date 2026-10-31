@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { exemptFromRateLimits } from '#application/access.ts';
 import { CreateApiToken } from '#application/api-tokens/create-api-token.ts';
 import { ListApiTokens } from '#application/api-tokens/list-api-tokens.ts';
 import { RevokeApiToken } from '#application/api-tokens/revoke-api-token.ts';
@@ -267,5 +268,17 @@ describe('API tokens', () => {
       ok: false,
       error: { code: 'TOKEN_MEMBER_INACTIVE', name: 'Bo' },
     });
+  });
+});
+
+describe('exemption from rate limits', () => {
+  const base = { signInEnabled: true, member: { id: 'm1', name: 'Ann', username: 'ann', email: '', color: '#0078d4', active: true }, isAdmin: true, via: 'session', token: null, invalidToken: false } as const;
+
+  it('covers only an administrator signed in with a session while sign-in is on', () => {
+    assert.equal(exemptFromRateLimits(base), true);
+    assert.equal(exemptFromRateLimits({ ...base, isAdmin: false }), false);
+    assert.equal(exemptFromRateLimits({ ...base, via: 'token' }), false);
+    assert.equal(exemptFromRateLimits({ ...base, signInEnabled: false }), false);
+    assert.equal(exemptFromRateLimits({ ...base, via: 'none', member: null }), false);
   });
 });

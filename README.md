@@ -42,7 +42,8 @@ The repository includes a Dockerfile and a `docker-compose.yml` that runs the ap
 with automatic HTTPS. [`deploy/README.md`](deploy/README.md) walks through hosting it for free on a
 Google Cloud e2-micro VM with a DuckDNS host name, plus upgrades, backups and troubleshooting,
 and describes the built-in protections (rate limits, temporary blocks, security headers,
-hardened containers) in its *Security* section.
+hardened containers) in its *Security* section. Administrators signed in through the browser aren't
+rate limited (except sign-in attempts), so bulk clean-ups don't hit `429`.
 
 ```bash
 cp deploy/.env.example .env    # set DOMAIN

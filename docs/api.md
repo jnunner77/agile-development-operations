@@ -17,7 +17,8 @@ auth=(-H "Authorization: Bearer $BOARDS_TOKEN" -H "Content-Type: application/jso
 - A wrong, expired or revoked token gets `401`; repeated bad tokens block the IP address for an
   hour. A member's tokens are revoked when an administrator sets or resets their password.
 - Requests are rate limited (about 600 a minute, 240 changes a minute). A `429` response has
-  a `Retry-After` header.
+  a `Retry-After` header. API tokens are always limited, even an administrator's; in the browser
+  an administrator signed in with a password is not (sign-in attempts are limited for everyone).
 - Errors are `{"error": "message"}`.
 
 ## Reading
